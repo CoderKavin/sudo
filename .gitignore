@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Node
+node_modules/
+.expo/
+*.tsbuildinfo
+
+# Environment
+.env
+*.env.local
+firebase-credentials.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+build/
+*.apk
+*.ipa
+
+# Data
+*.sqlite
+*.db
