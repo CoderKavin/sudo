@@ -8,15 +8,15 @@ export default function App() {
   const location = useLocation()
 
   return (
-    <div className="noise relative min-h-screen bg-[var(--bg)]">
-      {/* Ambient glow */}
-      <div className="pointer-events-none fixed inset-x-0 top-0 h-[800px] bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(99,102,241,0.08),transparent)] z-[1]" />
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 h-[400px] bg-[radial-gradient(ellipse_60%_40%_at_50%_120%,rgba(99,102,241,0.04),transparent)] z-[1]" />
+    <div className="relative min-h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+      {/* Ambient mesh gradient — shifts color subtly */}
+      <div className="mesh-gradient" />
 
-      {/* Grid */}
-      <div className="grid-bg fixed inset-0 pointer-events-none z-0 opacity-60" />
+      {/* Floating orbs for depth */}
+      <div className="orb" style={{ width: 600, height: 600, top: '-15%', left: '-10%', background: 'rgba(124,106,239,0.07)' }} />
+      <div className="orb" style={{ width: 500, height: 500, bottom: '-10%', right: '-10%', background: 'rgba(192,132,252,0.05)', animationDelay: '-4s' }} />
+      <div className="orb" style={{ width: 400, height: 400, top: '40%', left: '60%', background: 'rgba(59,130,246,0.04)', animationDelay: '-8s' }} />
 
-      {/* Content */}
       <div className="relative z-10">
         <AnimatePresence mode="wait">
           <Routes location={location} key={location.pathname}>

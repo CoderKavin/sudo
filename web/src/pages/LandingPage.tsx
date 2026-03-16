@@ -146,29 +146,32 @@ export default function LandingPage() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
     >
-      {/* ─── Nav ─── */}
+      {/* ─── Floating Nav ─── */}
       <motion.nav
-        initial={{ y: -20, opacity: 0 }}
+        initial={{ y: -30, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, delay: 0.1 }}
-        className="glass-strong fixed inset-x-0 top-0 z-50 !rounded-none !border-x-0 !border-t-0"
+        transition={{ duration: 0.7, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+        className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4"
       >
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <span className="text-[17px] font-bold tracking-[-0.02em] text-white">vanish</span>
-            <div className="hidden items-center gap-2.5 sm:flex">
-              <span className="h-4 w-px bg-white/[0.06]" />
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e] opacity-50" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
-              </span>
-              <span className="text-[12px] font-medium text-white/30">
-                <span className="tabular-nums text-white/50">{scanCount.toLocaleString()}</span> scans completed
-              </span>
-            </div>
+        <div className="nav-pill flex items-center gap-3 rounded-full px-2 py-1.5 sm:gap-4 sm:px-3">
+          <span className="pl-3 text-[15px] font-semibold tracking-[-0.02em] text-white">Vanish</span>
+
+          <div className="hidden items-center gap-2 sm:flex">
+            <span className="h-3.5 w-px bg-white/[0.08]" />
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#22c55e] opacity-50" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#22c55e]" />
+            </span>
+            <span className="text-[11px] font-medium text-white/25">
+              <span className="tabular-nums text-white/45">{scanCount.toLocaleString()}</span> scans
+            </span>
           </div>
-          <button className="btn-primary !px-5 !py-2 text-[13px]" onClick={() => navigate('/scan')}>
-            Start Free Scan
+
+          <button
+            className="ml-auto rounded-full bg-white/[0.1] px-4 py-1.5 text-[13px] font-medium text-white/80 transition-all duration-300 hover:bg-white/[0.15] hover:text-white active:scale-95"
+            onClick={() => navigate('/scan')}
+          >
+            Start Scan
           </button>
         </div>
       </motion.nav>
@@ -363,14 +366,20 @@ export default function LandingPage() {
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { title: 'No inbox access', desc: 'We check your email address against databases. We never read your inbox.', icon: '🔒' },
-            { title: 'No data stored', desc: 'Results live in your browser only. We can\'t see them even if we wanted to.', icon: '🛡️' },
-            { title: 'No tracking', desc: 'Zero analytics. Zero cookies. Zero fingerprinting. You\'re invisible to us.', icon: '👁️' },
-            { title: 'Open source data', desc: 'Powered by XposedOrNot — a free, transparent breach database.', icon: '✓' },
+            { title: 'No inbox access', desc: 'We check your email address against databases. We never read your inbox.',
+              svg: <svg className="h-5 w-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0110 0v4" /></svg> },
+            { title: 'No data stored', desc: 'Results live in your browser only. We can\'t see them even if we wanted to.',
+              svg: <svg className="h-5 w-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg> },
+            { title: 'No tracking', desc: 'Zero analytics. Zero cookies. Zero fingerprinting. You\'re invisible to us.',
+              svg: <svg className="h-5 w-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg> },
+            { title: 'Open source data', desc: 'Powered by XposedOrNot — a free, transparent breach database.',
+              svg: <svg className="h-5 w-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg> },
           ].map((item, i) => (
             <FadeInSection key={item.title} delay={i * 0.08}>
               <div className="glass-card h-full">
-                <span className="text-xl">{item.icon}</span>
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  {item.svg}
+                </div>
                 <h3 className="mt-4 text-[15px] font-semibold text-white">{item.title}</h3>
                 <p className="mt-2 text-[13px] leading-relaxed text-white/30">{item.desc}</p>
               </div>
@@ -441,7 +450,7 @@ export default function LandingPage() {
       {/* ─── Footer ─── */}
       <footer className="border-t border-white/[0.04]">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
-          <span className="text-[14px] font-bold text-white/15">vanish</span>
+          <span className="text-[14px] font-bold text-white/15">Vanish</span>
           <p className="text-[12px] text-white/15">Your data. Your control. Always.</p>
         </div>
       </footer>

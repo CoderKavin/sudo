@@ -18,11 +18,29 @@ const STATUS_STYLE: Record<string, string> = {
   removed: 'bg-[#22c55e]/10 text-[#22c55e]',
 };
 
+/* Breach-specific remediation steps */
+function getBreachActions(dataTypes: string[]): string[] {
+  const actions: string[] = [];
+  const lower = dataTypes.map((d) => d.toLowerCase()).join(' ');
+
+  if (lower.includes('password')) actions.push('Change your password immediately');
+  if (lower.includes('password')) actions.push('Enable two-factor authentication');
+  if (lower.includes('email')) actions.push('Watch for phishing emails targeting this account');
+  if (lower.includes('social security') || lower.includes('ssn')) actions.push('Freeze your credit with all three bureaus');
+  if (lower.includes('credit card') || lower.includes('financial') || lower.includes('bank')) actions.push('Monitor bank statements for unauthorized charges');
+  if (lower.includes('phone')) actions.push('Set up a SIM lock with your carrier');
+  if (lower.includes('passport') || lower.includes('driver')) actions.push('Report compromised ID documents to issuing authority');
+
+  if (actions.length === 0) actions.push('Review account security settings');
+  return actions;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const store = useStore();
   const [activeTab, setActiveTab] = useState<Tab>('breaches');
   const [search, setSearch] = useState('');
+  const [expandedBreach, setExpandedBreach] = useState<string | null>(null);
 
   if (store.breaches.length === 0 && store.dataBrokers.length === 0) {
     return (
@@ -40,6 +58,8 @@ export default function DashboardPage() {
 
   const unresolvedBreaches = store.breaches.filter((b) => !b.resolved).length;
   const exposedBrokers = store.dataBrokers.filter((b) => b.status === 'found').length;
+  const removingBrokers = store.dataBrokers.filter((b) => b.status === 'removing').length;
+  const removedBrokers = store.dataBrokers.filter((b) => b.status === 'removed').length;
 
   const filteredBreaches = useMemo(() => {
     if (!search.trim()) return store.breaches;
@@ -54,6 +74,54 @@ export default function DashboardPage() {
   }, [store.dataBrokers, search]);
 
   const scoreColor = store.privacyScore > 70 ? '#22c55e' : store.privacyScore > 40 ? '#f97316' : '#ef4444';
+
+  const handleBrokerRemoval = (brokerId: string, brokerUrl: string) => {
+    store.markBrokerRemoving(brokerId);
+    // Open the broker's opt-out / profile page so user can request removal
+    window.open(brokerUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleMarkBrokerRemoved = (brokerId: string) => {
+    store.markBrokerRemoved(brokerId);
+  };
+
+  const handleResolve = (breachId: string) => {
+    setExpandedBreach(expandedBreach === breachId ? null : breachId);
+  };
+
+  const confirmResolve = (breachId: string) => {
+    store.markBreachResolved(breachId);
+    setExpandedBreach(null);
+  };
+
+  const handleExportReport = () => {
+    const report = {
+      exportDate: new Date().toISOString(),
+      privacyScore: store.privacyScore,
+      emails: store.connectedEmails.map((e) => e.email),
+      breaches: store.breaches.map((b) => ({
+        name: b.name,
+        email: b.email,
+        date: b.date,
+        severity: b.severity,
+        dataTypes: b.dataTypes,
+        resolved: b.resolved,
+      })),
+      dataBrokers: store.dataBrokers.map((b) => ({
+        name: b.name,
+        status: b.status,
+        dataTypes: b.dataTypes,
+        optOutUrl: b.url,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `vanish-report-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <motion.div
@@ -77,7 +145,10 @@ export default function DashboardPage() {
             </p>
           </div>
         </div>
-        <button className="btn-sm" onClick={() => navigate('/scan')}>+ Add Email</button>
+        <div className="flex gap-2">
+          <button className="btn-sm" onClick={handleExportReport}>Export</button>
+          <button className="btn-sm" onClick={() => navigate('/scan')}>+ Add Email</button>
+        </div>
       </motion.div>
 
       {/* ─── Stats ─── */}
@@ -211,18 +282,22 @@ export default function DashboardPage() {
           )}
           {filteredBreaches
             .sort((a, b) => {
-              const order = { critical: 0, high: 1, medium: 2, low: 3 };
+              // Unresolved first, then by severity
+              if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+              const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
               return order[a.severity] - order[b.severity];
             })
             .map((breach, i) => {
               const sev = SEV[breach.severity];
+              const isExpanded = expandedBreach === breach.id;
+              const actions = getBreachActions(breach.dataTypes);
               return (
                 <motion.div
                   key={breach.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.03 }}
-                  className="glass-card"
+                  className={`glass-card transition-opacity ${breach.resolved ? 'opacity-50' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
@@ -243,9 +318,9 @@ export default function DashboardPage() {
                     {!breach.resolved && (
                       <button
                         className="btn-sm shrink-0 !text-[12px]"
-                        onClick={() => store.markBreachResolved(breach.id)}
+                        onClick={() => handleResolve(breach.id)}
                       >
-                        Resolve
+                        {isExpanded ? 'Close' : 'Take Action'}
                       </button>
                     )}
                   </div>
@@ -255,6 +330,40 @@ export default function DashboardPage() {
                       <span key={dt} className="tag">{dt}</span>
                     ))}
                   </div>
+
+                  {/* Expanded action panel */}
+                  <AnimatePresence>
+                    {isExpanded && !breach.resolved && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5">
+                          <p className="text-[12px] font-semibold uppercase tracking-wider text-white/25 mb-3">
+                            Recommended Actions
+                          </p>
+                          <ul className="space-y-2.5">
+                            {actions.map((action, idx) => (
+                              <li key={idx} className="flex items-start gap-2.5 text-[13px] text-white/50">
+                                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[10px] text-[var(--accent)]">
+                                  {idx + 1}
+                                </span>
+                                {action}
+                              </li>
+                            ))}
+                          </ul>
+                          <button
+                            className="btn-sm mt-5 !bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20"
+                            onClick={() => confirmResolve(breach.id)}
+                          >
+                            Mark as Resolved
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </motion.div>
               );
             })}
@@ -266,9 +375,9 @@ export default function DashboardPage() {
         <div>
           <div className="glass-card mb-5 flex flex-wrap gap-8">
             {[
-              { label: 'Exposed', count: store.dataBrokers.filter((b) => b.status === 'found').length, color: '#ef4444' },
-              { label: 'Removing', count: store.dataBrokers.filter((b) => b.status === 'removing').length, color: '#f97316' },
-              { label: 'Removed', count: store.dataBrokers.filter((b) => b.status === 'removed').length, color: '#22c55e' },
+              { label: 'Exposed', count: exposedBrokers, color: '#ef4444' },
+              { label: 'Removing', count: removingBrokers, color: '#f97316' },
+              { label: 'Removed', count: removedBrokers, color: '#22c55e' },
             ].map((s) => (
               <div key={s.label}>
                 <span className="text-[1.25rem] font-bold tabular-nums" style={{ color: s.color }}>{s.count}</span>
@@ -289,7 +398,7 @@ export default function DashboardPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.02 }}
-                className="glass-card"
+                className={`glass-card ${broker.status === 'removed' ? 'opacity-50' : ''}`}
               >
                 <div className="flex items-center justify-between">
                   <h3 className="text-[14px] font-semibold text-white">{broker.name}</h3>
@@ -304,10 +413,27 @@ export default function DashboardPage() {
                 {broker.status === 'found' && (
                   <button
                     className="btn-sm mt-3 !text-[12px]"
-                    onClick={() => store.markBrokerRemoving(broker.id)}
+                    onClick={() => handleBrokerRemoval(broker.id, broker.url)}
                   >
-                    Request Removal
+                    Request Removal →
                   </button>
+                )}
+                {broker.status === 'removing' && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-[12px] text-white/20">Opted out?</span>
+                    <button
+                      className="btn-sm !text-[12px] !bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20"
+                      onClick={() => handleMarkBrokerRemoved(broker.id)}
+                    >
+                      Confirm Removed
+                    </button>
+                    <button
+                      className="btn-sm !text-[12px]"
+                      onClick={() => window.open(broker.url, '_blank', 'noopener,noreferrer')}
+                    >
+                      Revisit
+                    </button>
+                  </div>
                 )}
               </motion.div>
             ))}
@@ -323,7 +449,10 @@ export default function DashboardPage() {
           className="py-20 text-center"
         >
           <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-            <span className="text-2xl opacity-30">🔒</span>
+            <svg className="h-7 w-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
           </div>
           <h3 className="text-[17px] font-semibold text-white">
             {activeTab === 'accounts' ? 'Account Discovery' : 'Subscription Tracker'}
