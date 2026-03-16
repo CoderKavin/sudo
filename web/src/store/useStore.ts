@@ -9,6 +9,10 @@ import type {
   ScannedBreach,
   ScannedDataBroker,
 } from '../lib/scanner';
+import type {
+  DiscoveredAccount,
+  TrackedSubscription,
+} from '../lib/extensionBridge';
 
 // ---------------------------------------------------------------------------
 // Connected email type
@@ -32,6 +36,12 @@ interface VanishState {
   dataBrokers: ScannedDataBroker[];
   connectedEmails: ConnectedEmail[];
 
+  // Extension data (accounts + subscriptions from Chrome extension)
+  discoveredAccounts: DiscoveredAccount[];
+  trackedSubscriptions: TrackedSubscription[];
+  extensionConnected: boolean;
+  extensionEmail: string | null;
+
   // Scan state
   scanState: 'idle' | 'connecting' | 'scanning' | 'complete';
   scanProgress: number;
@@ -52,6 +62,9 @@ interface VanishState {
   markBreachResolved: (breachId: string) => void;
   markBrokerRemoving: (brokerId: string) => void;
   markBrokerRemoved: (brokerId: string) => void;
+  setDiscoveredAccounts: (accounts: DiscoveredAccount[]) => void;
+  setTrackedSubscriptions: (subscriptions: TrackedSubscription[]) => void;
+  setExtensionConnected: (connected: boolean, email?: string | null) => void;
   clearAllData: () => void;
 }
 
@@ -62,6 +75,10 @@ export const useStore = create<VanishState>()(
       breaches: [],
       dataBrokers: [],
       connectedEmails: [],
+      discoveredAccounts: [],
+      trackedSubscriptions: [],
+      extensionConnected: false,
+      extensionEmail: null,
       scanState: 'idle',
       scanProgress: 0,
       scanStage: '',
@@ -126,11 +143,22 @@ export const useStore = create<VanishState>()(
           ),
         })),
 
+      setDiscoveredAccounts: (accounts) => set({ discoveredAccounts: accounts }),
+
+      setTrackedSubscriptions: (subscriptions) => set({ trackedSubscriptions: subscriptions }),
+
+      setExtensionConnected: (connected, email = null) =>
+        set({ extensionConnected: connected, extensionEmail: email }),
+
       clearAllData: () =>
         set({
           breaches: [],
           dataBrokers: [],
           connectedEmails: [],
+          discoveredAccounts: [],
+          trackedSubscriptions: [],
+          extensionConnected: false,
+          extensionEmail: null,
           scanState: 'idle',
           scanProgress: 0,
           scanStage: '',
@@ -139,11 +167,14 @@ export const useStore = create<VanishState>()(
     }),
     {
       name: 'vanish-store',
-      // Don't persist transient scan UI state
       partialize: (state) => ({
         breaches: state.breaches,
         dataBrokers: state.dataBrokers,
         connectedEmails: state.connectedEmails,
+        discoveredAccounts: state.discoveredAccounts,
+        trackedSubscriptions: state.trackedSubscriptions,
+        extensionConnected: state.extensionConnected,
+        extensionEmail: state.extensionEmail,
         privacyScore: state.privacyScore,
         scanState: state.scanState === 'complete' ? 'complete' : 'idle',
       }),

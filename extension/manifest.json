@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Vanish — Digital Footprint Scanner",
+  "version": "1.0.0",
+  "description": "Discover every account and subscription linked to your email. Part of the Vanish privacy suite.",
+
+  "permissions": [
+    "identity",
+    "storage"
+  ],
+
+  "oauth2": {
+    "client_id": "YOUR_GOOGLE_CLOUD_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.readonly"
+    ]
+  },
+
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Vanish"
+  },
+
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:*/*",
+        "https://*.vercel.app/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:*/*",
+      "https://*.vercel.app/*"
+    ]
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

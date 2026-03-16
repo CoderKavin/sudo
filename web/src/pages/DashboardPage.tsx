@@ -1,7 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
+import {
+  isExtensionInstalled,
+  connectGmail,
+  runExtensionScan,
+  getExtensionData,
+  disconnectGmail,
+} from '../lib/extensionBridge';
 
 type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions';
 
@@ -41,6 +48,59 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('breaches');
   const [search, setSearch] = useState('');
   const [expandedBreach, setExpandedBreach] = useState<string | null>(null);
+  const [extScanning, setExtScanning] = useState(false);
+  const [extError, setExtError] = useState<string | null>(null);
+
+  // Load extension data on mount
+  useEffect(() => {
+    if (!isExtensionInstalled()) return;
+    getExtensionData().then((data) => {
+      if (data.vanish_connected) {
+        store.setExtensionConnected(true, data.vanish_email ?? null);
+      }
+      if (data.vanish_accounts) store.setDiscoveredAccounts(data.vanish_accounts);
+      if (data.vanish_subscriptions) store.setTrackedSubscriptions(data.vanish_subscriptions);
+    }).catch(() => {});
+  }, []);
+
+  const handleConnectGmail = useCallback(async () => {
+    setExtError(null);
+    try {
+      const res = await connectGmail();
+      if (res.ok && res.email) {
+        store.setExtensionConnected(true, res.email);
+      } else {
+        setExtError(res.error ?? 'Failed to connect');
+      }
+    } catch {
+      setExtError('Extension not responding');
+    }
+  }, []);
+
+  const handleExtensionScan = useCallback(async () => {
+    setExtScanning(true);
+    setExtError(null);
+    try {
+      const res = await runExtensionScan();
+      if (res.ok) {
+        if (res.accounts) store.setDiscoveredAccounts(res.accounts);
+        if (res.subscriptions) store.setTrackedSubscriptions(res.subscriptions);
+      } else {
+        setExtError(res.error ?? 'Scan failed');
+      }
+    } catch {
+      setExtError('Extension scan timed out');
+    } finally {
+      setExtScanning(false);
+    }
+  }, []);
+
+  const handleDisconnectGmail = useCallback(async () => {
+    await disconnectGmail().catch(() => {});
+    store.setExtensionConnected(false, null);
+    store.setDiscoveredAccounts([]);
+    store.setTrackedSubscriptions([]);
+  }, []);
 
   if (store.breaches.length === 0 && store.dataBrokers.length === 0) {
     return (
@@ -227,8 +287,12 @@ export default function DashboardPage() {
         <div className="flex gap-1 rounded-2xl bg-white/[0.02] border border-white/[0.04] p-1.5">
           {(['breaches', 'brokers', 'accounts', 'subscriptions'] as Tab[]).map((tab) => {
             const isActive = activeTab === tab;
-            const isLocked = tab === 'accounts' || tab === 'subscriptions';
-            const count = tab === 'breaches' ? unresolvedBreaches : tab === 'brokers' ? exposedBrokers : null;
+            const count =
+              tab === 'breaches' ? unresolvedBreaches
+              : tab === 'brokers' ? exposedBrokers
+              : tab === 'accounts' ? store.discoveredAccounts.length
+              : tab === 'subscriptions' ? store.trackedSubscriptions.length
+              : null;
             return (
               <button
                 key={tab}
@@ -240,12 +304,11 @@ export default function DashboardPage() {
                 }`}
               >
                 {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                {count !== null && (
+                {count !== null && count > 0 && (
                   <span className={`ml-1.5 tabular-nums ${isActive ? 'text-white/50' : 'text-white/15'}`}>
                     ({count})
                   </span>
                 )}
-                {isLocked && <span className="ml-1 text-[10px] text-white/15">Soon</span>}
               </button>
             );
           })}
@@ -441,33 +504,240 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── Coming Soon ─── */}
-      {(activeTab === 'accounts' || activeTab === 'subscriptions') && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="py-20 text-center"
-        >
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-            <svg className="h-7 w-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <rect x="3" y="11" width="18" height="11" rx="2" />
-              <path d="M7 11V7a5 5 0 0110 0v4" />
-            </svg>
-          </div>
-          <h3 className="text-[17px] font-semibold text-white">
-            {activeTab === 'accounts' ? 'Account Discovery' : 'Subscription Tracker'}
-          </h3>
-          <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
-            {activeTab === 'accounts'
-              ? 'Automatically find every account linked to your email — requires the Chrome extension.'
-              : 'Track every recurring charge across your accounts — requires the Chrome extension.'}
-          </p>
-          <div className="mt-5">
-            <span className="glass rounded-full px-5 py-2 text-[13px] font-medium text-white/30">
-              Coming with Chrome Extension
-            </span>
-          </div>
-        </motion.div>
+      {/* ─── Accounts ─── */}
+      {activeTab === 'accounts' && (
+        <div>
+          {!isExtensionInstalled() ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
+                <svg className="h-7 w-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-7v4h4l-5 7z" />
+                </svg>
+              </div>
+              <h3 className="text-[17px] font-semibold text-white">Install Chrome Extension</h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                Account Discovery scans your Gmail to find every service you've signed up for. Install the Vanish Chrome extension to get started.
+              </p>
+            </motion.div>
+          ) : !store.extensionConnected ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
+                <svg className="h-7 w-7 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-[17px] font-semibold text-white">Connect Your Gmail</h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                Sign in with Gmail to discover all accounts linked to your email.
+              </p>
+              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
+              <button className="btn-primary mt-5" onClick={handleConnectGmail}>Connect Gmail</button>
+            </motion.div>
+          ) : store.discoveredAccounts.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <h3 className="text-[17px] font-semibold text-white">
+                {extScanning ? 'Scanning your inbox...' : 'No accounts discovered yet'}
+              </h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                {extScanning
+                  ? 'This may take a minute depending on inbox size.'
+                  : `Connected as ${store.extensionEmail}. Run a scan to find your accounts.`}
+              </p>
+              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
+              {!extScanning && (
+                <div className="mt-5 flex items-center justify-center gap-3">
+                  <button className="btn-primary" onClick={handleExtensionScan}>Scan Inbox</button>
+                  <button className="btn-sm !text-[12px] text-white/30" onClick={handleDisconnectGmail}>Disconnect</button>
+                </div>
+              )}
+              {extScanning && (
+                <div className="mx-auto mt-6 h-1 w-48 overflow-hidden rounded-full bg-white/[0.06]">
+                  <motion.div
+                    className="h-full rounded-full bg-[var(--accent)]"
+                    animate={{ x: ['-100%', '100%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ width: '40%' }}
+                  />
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <div>
+              <div className="glass-card mb-5 flex items-center justify-between">
+                <div>
+                  <span className="text-[13px] text-white/30">Connected as </span>
+                  <span className="text-[13px] font-medium text-white/60">{store.extensionEmail}</span>
+                  <span className="ml-3 text-[13px] text-white/20">·</span>
+                  <span className="ml-3 text-[13px] text-white/30">{store.discoveredAccounts.length} accounts found</span>
+                </div>
+                <div className="flex gap-2">
+                  <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
+                    {extScanning ? 'Scanning...' : 'Rescan'}
+                  </button>
+                  <button className="btn-sm !text-[12px] text-white/30" onClick={handleDisconnectGmail}>Disconnect</button>
+                </div>
+              </div>
+
+              {/* Category groups */}
+              {(() => {
+                const categories = [...new Set(store.discoveredAccounts.map((a) => a.category))].sort();
+                return categories.map((cat) => {
+                  const accounts = store.discoveredAccounts.filter((a) => a.category === cat);
+                  return (
+                    <div key={cat} className="mb-6">
+                      <p className="section-label mb-3 capitalize">{cat} ({accounts.length})</p>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        {accounts.map((account, i) => (
+                          <motion.div
+                            key={account.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: i * 0.02 }}
+                            className="glass-card"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-[13px] font-bold text-white/40">
+                                {account.name.charAt(0)}
+                              </div>
+                              <div className="min-w-0">
+                                <h4 className="text-[14px] font-semibold text-white truncate">{account.name}</h4>
+                                <p className="text-[11px] text-white/20 truncate">{account.domain}</p>
+                              </div>
+                            </div>
+                            <div className="mt-3 flex items-center justify-between text-[11px] text-white/20">
+                              <span>First seen {new Date(account.firstSeen).toLocaleDateString()}</span>
+                              <span>Last {new Date(account.lastActivity).toLocaleDateString()}</span>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Subscriptions ─── */}
+      {activeTab === 'subscriptions' && (
+        <div>
+          {!isExtensionInstalled() ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
+                <svg className="h-7 w-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-7v4h4l-5 7z" />
+                </svg>
+              </div>
+              <h3 className="text-[17px] font-semibold text-white">Install Chrome Extension</h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                Subscription Tracker finds recurring charges from your email receipts. Install the Vanish Chrome extension to get started.
+              </p>
+            </motion.div>
+          ) : !store.extensionConnected ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
+                <svg className="h-7 w-7 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </div>
+              <h3 className="text-[17px] font-semibold text-white">Connect Your Gmail</h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                Sign in with Gmail to track your subscriptions and recurring charges.
+              </p>
+              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
+              <button className="btn-primary mt-5" onClick={handleConnectGmail}>Connect Gmail</button>
+            </motion.div>
+          ) : store.trackedSubscriptions.length === 0 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
+              <h3 className="text-[17px] font-semibold text-white">
+                {extScanning ? 'Scanning for subscriptions...' : 'No subscriptions found yet'}
+              </h3>
+              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/30">
+                {extScanning
+                  ? 'Analyzing billing emails from the past year.'
+                  : `Connected as ${store.extensionEmail}. Run a scan to find recurring charges.`}
+              </p>
+              {!extScanning && (
+                <button className="btn-primary mt-5" onClick={handleExtensionScan}>Scan Inbox</button>
+              )}
+            </motion.div>
+          ) : (
+            <div>
+              {/* Monthly total */}
+              {(() => {
+                const activeSubs = store.trackedSubscriptions.filter((s) => s.active);
+                const monthlyTotal = activeSubs.reduce((sum, s) => {
+                  if (s.frequency === 'yearly') return sum + s.amount / 12;
+                  return sum + s.amount;
+                }, 0);
+                return (
+                  <div className="glass-card mb-5 flex items-center justify-between">
+                    <div>
+                      <div className="text-[2rem] font-bold tracking-tight text-white tabular-nums">
+                        ${monthlyTotal.toFixed(2)}
+                        <span className="text-[14px] font-normal text-white/25">/mo</span>
+                      </div>
+                      <div className="text-[13px] text-white/25">
+                        {activeSubs.length} active subscription{activeSubs.length !== 1 ? 's' : ''}
+                      </div>
+                    </div>
+                    <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
+                      {extScanning ? 'Scanning...' : 'Rescan'}
+                    </button>
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-3">
+                {store.trackedSubscriptions
+                  .sort((a, b) => (a.active === b.active ? b.amount - a.amount : a.active ? -1 : 1))
+                  .map((sub, i) => (
+                    <motion.div
+                      key={sub.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      className={`glass-card ${!sub.active ? 'opacity-50' : ''}`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-[13px] font-bold text-white/40">
+                            {sub.name.charAt(0)}
+                          </div>
+                          <div>
+                            <h4 className="text-[14px] font-semibold text-white">{sub.name}</h4>
+                            <p className="text-[11px] text-white/20">{sub.domain}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-[15px] font-semibold text-white tabular-nums">
+                            {sub.currency === 'EUR' ? '€' : sub.currency === 'GBP' ? '£' : '$'}
+                            {sub.amount.toFixed(2)}
+                          </div>
+                          <div className="text-[11px] text-white/20">
+                            {sub.frequency === 'monthly' ? '/mo' : sub.frequency === 'yearly' ? '/yr' : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-[11px] text-white/20">
+                        <span>{sub.emailCount} billing email{sub.emailCount !== 1 ? 's' : ''} found</span>
+                        <div className="flex items-center gap-2">
+                          <span>Last charged {new Date(sub.lastCharged).toLocaleDateString()}</span>
+                          {sub.active ? (
+                            <span className="badge bg-[#22c55e]/10 text-[#22c55e]">Active</span>
+                          ) : (
+                            <span className="badge bg-white/[0.04] text-white/20">Inactive</span>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </motion.div>
   );
