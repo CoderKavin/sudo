@@ -7,43 +7,74 @@ import { getAuthToken, removeCachedToken, getUserEmail, scanForAccounts, scanFor
 
 // ─── Message handler ─────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+function handleMessage(message, sendResponse) {
   if (message.type === 'VANISH_PING') {
     sendResponse({ ok: true, version: chrome.runtime.getManifest().version });
-    return true;
+    return;
   }
 
   if (message.type === 'VANISH_CONNECT') {
-    handleConnect().then(sendResponse).catch((e) => sendResponse({ error: e.message }));
-    return true; // async
+    handleConnect()
+      .then(sendResponse)
+      .catch((e) => {
+        console.error('[Vanish] Connect error:', e);
+        sendResponse({ ok: false, error: e.message });
+      });
+    return;
   }
 
+  // Fire-and-forget scan: starts in background, responds immediately
   if (message.type === 'VANISH_SCAN') {
-    handleScan(message.onlyAccounts, message.onlySubscriptions)
-      .then(sendResponse)
-      .catch((e) => sendResponse({ error: e.message }));
-    return true;
+    sendResponse({ ok: true, started: true });
+    // Run scan in background — results go to chrome.storage
+    handleScan().catch((e) => {
+      console.error('[Vanish] Scan error:', e);
+      chrome.storage.local.set({
+        vanish_scan_status: 'error',
+        vanish_scan_error: e.message,
+      });
+    });
+    return;
+  }
+
+  // Poll scan status
+  if (message.type === 'VANISH_SCAN_STATUS') {
+    chrome.storage.local.get([
+      'vanish_scan_status', 'vanish_scan_progress', 'vanish_scan_error',
+      'vanish_accounts', 'vanish_subscriptions',
+    ], (data) => {
+      sendResponse(data);
+    });
+    return;
   }
 
   if (message.type === 'VANISH_GET_DATA') {
-    chrome.storage.local.get(['vanish_accounts', 'vanish_subscriptions', 'vanish_email', 'vanish_connected'], (data) => {
+    chrome.storage.local.get([
+      'vanish_accounts', 'vanish_subscriptions',
+      'vanish_email', 'vanish_connected',
+      'vanish_scan_status', 'vanish_scan_progress',
+    ], (data) => {
       sendResponse(data);
     });
-    return true;
+    return;
   }
 
   if (message.type === 'VANISH_DISCONNECT') {
-    handleDisconnect().then(sendResponse).catch((e) => sendResponse({ error: e.message }));
-    return true;
+    handleDisconnect()
+      .then(sendResponse)
+      .catch((e) => sendResponse({ ok: false, error: e.message }));
+    return;
   }
+}
 
-  return false;
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  handleMessage(message, sendResponse);
+  return true;
 });
 
-// Also handle external messages from the web app
-chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
-  // Re-use same handler
-  chrome.runtime.onMessage.dispatch(message, sender, sendResponse);
+// Also handle external messages from the web app (same logic)
+chrome.runtime.onMessageExternal.addListener((message, _sender, sendResponse) => {
+  handleMessage(message, sendResponse);
   return true;
 });
 
@@ -71,12 +102,19 @@ async function handleDisconnect() {
   await chrome.storage.local.remove([
     'vanish_connected', 'vanish_email', 'vanish_token',
     'vanish_accounts', 'vanish_subscriptions', 'vanish_last_scan',
+    'vanish_scan_status', 'vanish_scan_progress', 'vanish_scan_error',
   ]);
 
   return { ok: true };
 }
 
 async function handleScan() {
+  await chrome.storage.local.set({
+    vanish_scan_status: 'scanning',
+    vanish_scan_progress: 'Starting scan...',
+    vanish_scan_error: null,
+  });
+
   const data = await chrome.storage.local.get('vanish_token');
   let token = data.vanish_token;
 
@@ -88,24 +126,27 @@ async function handleScan() {
 
   // Run both scans
   const accounts = await scanForAccounts(token, (msg) => {
+    chrome.storage.local.set({ vanish_scan_progress: msg });
     broadcastProgress(msg);
   });
 
   const subscriptions = await scanForSubscriptions(token, (msg) => {
+    chrome.storage.local.set({ vanish_scan_progress: msg });
     broadcastProgress(msg);
   });
 
-  // Persist results
+  // Persist results + mark complete
   await chrome.storage.local.set({
     vanish_accounts: accounts,
     vanish_subscriptions: subscriptions,
     vanish_last_scan: new Date().toISOString(),
+    vanish_scan_status: 'complete',
+    vanish_scan_progress: `Found ${accounts.length} accounts and ${subscriptions.length} subscriptions`,
   });
 
   return { ok: true, accounts, subscriptions };
 }
 
 function broadcastProgress(message) {
-  // Send progress to popup if open
   chrome.runtime.sendMessage({ type: 'VANISH_PROGRESS', message }).catch(() => {});
 }

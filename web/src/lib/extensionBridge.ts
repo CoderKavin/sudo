@@ -161,5 +161,11 @@ export interface TrackedSubscription {
   frequency: 'monthly' | 'yearly' | 'unknown';
   lastCharged: string;
   active: boolean;
+  status?: 'active' | 'cancelled' | 'failed' | 'likely_cancelled';
   emailCount: number;
+  chargeCount?: number;
+  hasCancellation?: boolean;
+  hasFailedPayment?: boolean;
+  lastFailureDate?: string | null;
+  lastCancelDate?: string | null;
 }

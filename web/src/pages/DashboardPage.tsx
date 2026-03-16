@@ -50,6 +50,7 @@ export default function DashboardPage() {
   const [expandedBreach, setExpandedBreach] = useState<string | null>(null);
   const [extScanning, setExtScanning] = useState(false);
   const [extError, setExtError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<string | null>(null);
 
   // Load extension data on mount
   useEffect(() => {
@@ -122,16 +123,47 @@ export default function DashboardPage() {
   const removedBrokers = store.dataBrokers.filter((b) => b.status === 'removed').length;
 
   const filteredBreaches = useMemo(() => {
-    if (!search.trim()) return store.breaches;
-    const q = search.toLowerCase();
-    return store.breaches.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
-  }, [store.breaches, search]);
+    let list = store.breaches;
+    if (filter === 'unresolved') list = list.filter((b) => !b.resolved);
+    else if (filter === 'resolved') list = list.filter((b) => b.resolved);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
+    }
+    return list;
+  }, [store.breaches, search, filter]);
 
   const filteredBrokers = useMemo(() => {
-    if (!search.trim()) return store.dataBrokers;
-    const q = search.toLowerCase();
-    return store.dataBrokers.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
-  }, [store.dataBrokers, search]);
+    let list = store.dataBrokers;
+    if (filter === 'found' || filter === 'removing' || filter === 'removed') list = list.filter((b) => b.status === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
+    }
+    return list;
+  }, [store.dataBrokers, search, filter]);
+
+  const filteredAccounts = useMemo(() => {
+    let list = store.discoveredAccounts;
+    if (filter) list = list.filter((a) => a.category === filter);
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((a) => a.name.toLowerCase().includes(q) || a.domain.toLowerCase().includes(q));
+    }
+    return list;
+  }, [store.discoveredAccounts, search, filter]);
+
+  const filteredSubscriptions = useMemo(() => {
+    let list = store.trackedSubscriptions;
+    if (filter === 'active') list = list.filter((s) => (s.status ?? (s.active ? 'active' : 'cancelled')) === 'active');
+    else if (filter === 'cancelled') list = list.filter((s) => s.status === 'cancelled' || s.status === 'likely_cancelled');
+    else if (filter === 'failed') list = list.filter((s) => s.status === 'failed');
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((s) => s.name.toLowerCase().includes(q) || s.domain.toLowerCase().includes(q));
+    }
+    return list;
+  }, [store.trackedSubscriptions, search, filter]);
 
   const scoreColor = store.privacyScore > 70 ? '#22c55e' : store.privacyScore > 40 ? '#f97316' : '#ef4444';
 
@@ -296,7 +328,7 @@ export default function DashboardPage() {
             return (
               <button
                 key={tab}
-                onClick={() => setActiveTab(tab)}
+                onClick={() => { setActiveTab(tab); setFilter(null); setSearch(''); }}
                 className={`relative flex-1 rounded-xl px-4 py-2.5 text-[13px] font-medium transition-all duration-300 ${
                   isActive
                     ? 'bg-white/[0.06] text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)] border border-white/[0.08]'
@@ -315,25 +347,100 @@ export default function DashboardPage() {
         </div>
       </motion.div>
 
-      {/* ─── Search ─── */}
-      <AnimatePresence>
-        {(activeTab === 'breaches' || activeTab === 'brokers') && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-6 overflow-hidden"
-          >
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={`Search ${activeTab}...`}
-              className="input"
-            />
-          </motion.div>
+      {/* ─── Search + Filters ─── */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+        className="mb-6 space-y-3"
+      >
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={`Search ${activeTab}...`}
+          className="input"
+        />
+        {/* Filter chips */}
+        {activeTab === 'accounts' && store.discoveredAccounts.length > 0 && (() => {
+          const cats = [...new Set(store.discoveredAccounts.map((a) => a.category))].sort();
+          return (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setFilter(null)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
+                  !filter ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
+                }`}
+              >All ({store.discoveredAccounts.length})</button>
+              {cats.map((cat) => {
+                const count = store.discoveredAccounts.filter((a) => a.category === cat).length;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => setFilter(filter === cat ? null : cat)}
+                    className={`rounded-full px-3 py-1 text-[11px] font-medium capitalize transition-all ${
+                      filter === cat ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
+                    }`}
+                  >{cat} ({count})</button>
+                );
+              })}
+            </div>
+          );
+        })()}
+        {activeTab === 'subscriptions' && store.trackedSubscriptions.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { key: null, label: 'All', count: store.trackedSubscriptions.length },
+              { key: 'active', label: 'Active', count: store.trackedSubscriptions.filter((s) => (s.status ?? (s.active ? 'active' : 'cancelled')) === 'active').length },
+              { key: 'cancelled', label: 'Cancelled', count: store.trackedSubscriptions.filter((s) => s.status === 'cancelled' || s.status === 'likely_cancelled').length },
+              { key: 'failed', label: 'Failed', count: store.trackedSubscriptions.filter((s) => s.status === 'failed').length },
+            ].filter((f) => f.count > 0).map((f) => (
+              <button
+                key={f.key ?? 'all'}
+                onClick={() => setFilter(filter === f.key ? null : f.key)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
+                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
+                }`}
+              >{f.label} ({f.count})</button>
+            ))}
+          </div>
         )}
-      </AnimatePresence>
+        {activeTab === 'breaches' && store.breaches.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { key: null, label: 'All', count: store.breaches.length },
+              { key: 'unresolved', label: 'Unresolved', count: unresolvedBreaches },
+              { key: 'resolved', label: 'Resolved', count: store.breaches.length - unresolvedBreaches },
+            ].filter((f) => f.count > 0).map((f) => (
+              <button
+                key={f.key ?? 'all'}
+                onClick={() => setFilter(filter === f.key ? null : f.key)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
+                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
+                }`}
+              >{f.label} ({f.count})</button>
+            ))}
+          </div>
+        )}
+        {activeTab === 'brokers' && store.dataBrokers.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { key: null, label: 'All', count: store.dataBrokers.length },
+              { key: 'found', label: 'Exposed', count: exposedBrokers },
+              { key: 'removing', label: 'Removing', count: removingBrokers },
+              { key: 'removed', label: 'Removed', count: removedBrokers },
+            ].filter((f) => f.count > 0).map((f) => (
+              <button
+                key={f.key ?? 'all'}
+                onClick={() => setFilter(filter === f.key ? null : f.key)}
+                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
+                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
+                }`}
+              >{f.label} ({f.count})</button>
+            ))}
+          </div>
+        )}
+      </motion.div>
 
       {/* ─── Breaches ─── */}
       {activeTab === 'breaches' && (
@@ -578,43 +685,49 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              {/* Category groups */}
-              {(() => {
-                const categories = [...new Set(store.discoveredAccounts.map((a) => a.category))].sort();
-                return categories.map((cat) => {
-                  const accounts = store.discoveredAccounts.filter((a) => a.category === cat);
-                  return (
-                    <div key={cat} className="mb-6">
-                      <p className="section-label mb-3 capitalize">{cat} ({accounts.length})</p>
-                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {accounts.map((account, i) => (
-                          <motion.div
-                            key={account.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: i * 0.02 }}
-                            className="glass-card"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-[13px] font-bold text-white/40">
-                                {account.name.charAt(0)}
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="text-[14px] font-semibold text-white truncate">{account.name}</h4>
-                                <p className="text-[11px] text-white/20 truncate">{account.domain}</p>
-                              </div>
-                            </div>
-                            <div className="mt-3 flex items-center justify-between text-[11px] text-white/20">
-                              <span>First seen {new Date(account.firstSeen).toLocaleDateString()}</span>
-                              <span>Last {new Date(account.lastActivity).toLocaleDateString()}</span>
-                            </div>
-                          </motion.div>
-                        ))}
+              {filteredAccounts.length === 0 ? (
+                <div className="py-16 text-center text-[15px] text-white/20">No accounts match your search</div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {filteredAccounts.map((account, i) => (
+                    <motion.div
+                      key={account.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      className="glass-card"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-[13px] font-bold text-white/40">
+                          {account.name.charAt(0)}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-[14px] font-semibold text-white truncate">{account.name}</h4>
+                          <p className="text-[11px] text-white/20 truncate">{account.domain}</p>
+                        </div>
+                        <span className="badge bg-white/[0.03] text-white/15 capitalize text-[10px]">{account.category}</span>
                       </div>
-                    </div>
-                  );
-                });
-              })()}
+                      <div className="mt-3 flex items-center justify-between text-[11px] text-white/20">
+                        <span>Since {new Date(account.firstSeen).toLocaleDateString()}</span>
+                        <div className="flex gap-1.5">
+                          <button
+                            className="btn-sm !py-1 !px-2.5 !text-[10px]"
+                            onClick={() => window.open(`https://${account.domain}/account`, '_blank', 'noopener,noreferrer')}
+                          >
+                            Manage
+                          </button>
+                          <button
+                            className="btn-sm !py-1 !px-2.5 !text-[10px] !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
+                            onClick={() => window.open(`https://www.google.com/search?q=how+to+delete+${encodeURIComponent(account.name)}+account`, '_blank', 'noopener,noreferrer')}
+                          >
+                            Delete Guide
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -667,33 +780,40 @@ export default function DashboardPage() {
             <div>
               {/* Monthly total */}
               {(() => {
-                const activeSubs = store.trackedSubscriptions.filter((s) => s.active);
+                const activeSubs = store.trackedSubscriptions.filter((s) => (s.status ?? (s.active ? 'active' : 'cancelled')) === 'active');
+                const cancelledCount = store.trackedSubscriptions.filter((s) => s.status === 'cancelled' || s.status === 'likely_cancelled').length;
+                const failedCount = store.trackedSubscriptions.filter((s) => s.status === 'failed').length;
                 const monthlyTotal = activeSubs.reduce((sum, s) => {
                   if (s.frequency === 'yearly') return sum + s.amount / 12;
                   return sum + s.amount;
                 }, 0);
                 return (
-                  <div className="glass-card mb-5 flex items-center justify-between">
-                    <div>
-                      <div className="text-[2rem] font-bold tracking-tight text-white tabular-nums">
-                        ${monthlyTotal.toFixed(2)}
-                        <span className="text-[14px] font-normal text-white/25">/mo</span>
+                  <div className="glass-card mb-5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-[2rem] font-bold tracking-tight text-white tabular-nums">
+                          ${monthlyTotal.toFixed(2)}
+                          <span className="text-[14px] font-normal text-white/25">/mo</span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-3 text-[13px]">
+                          <span className="text-[#22c55e]">{activeSubs.length} active</span>
+                          {cancelledCount > 0 && <span className="text-white/25">{cancelledCount} cancelled</span>}
+                          {failedCount > 0 && <span className="text-[#f97316]">{failedCount} failed</span>}
+                        </div>
                       </div>
-                      <div className="text-[13px] text-white/25">
-                        {activeSubs.length} active subscription{activeSubs.length !== 1 ? 's' : ''}
-                      </div>
+                      <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
+                        {extScanning ? 'Scanning...' : 'Rescan'}
+                      </button>
                     </div>
-                    <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
-                      {extScanning ? 'Scanning...' : 'Rescan'}
-                    </button>
                   </div>
                 );
               })()}
 
               <div className="space-y-3">
-                {store.trackedSubscriptions
-                  .sort((a, b) => (a.active === b.active ? b.amount - a.amount : a.active ? -1 : 1))
-                  .map((sub, i) => (
+                {filteredSubscriptions.length === 0 && (
+                  <div className="py-16 text-center text-[15px] text-white/20">No subscriptions match your filters</div>
+                )}
+                {filteredSubscriptions.map((sub, i) => (
                     <motion.div
                       key={sub.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -722,15 +842,43 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       <div className="mt-3 flex items-center justify-between text-[11px] text-white/20">
-                        <span>{sub.emailCount} billing email{sub.emailCount !== 1 ? 's' : ''} found</span>
+                        <span>{sub.chargeCount ?? sub.emailCount} charge{(sub.chargeCount ?? sub.emailCount) !== 1 ? 's' : ''} found</span>
                         <div className="flex items-center gap-2">
-                          <span>Last charged {new Date(sub.lastCharged).toLocaleDateString()}</span>
-                          {sub.active ? (
-                            <span className="badge bg-[#22c55e]/10 text-[#22c55e]">Active</span>
-                          ) : (
-                            <span className="badge bg-white/[0.04] text-white/20">Inactive</span>
-                          )}
+                          <span>Last {new Date(sub.lastCharged).toLocaleDateString()}</span>
+                          {(() => {
+                            const status = sub.status ?? (sub.active ? 'active' : 'cancelled');
+                            if (status === 'active') return <span className="badge bg-[#22c55e]/10 text-[#22c55e]">Active</span>;
+                            if (status === 'cancelled') return <span className="badge bg-[#ef4444]/10 text-[#ef4444]">Cancelled</span>;
+                            if (status === 'failed') return <span className="badge bg-[#f97316]/10 text-[#f97316]">Payment Failed</span>;
+                            if (status === 'likely_cancelled') return <span className="badge bg-[#eab308]/10 text-[#eab308]">Likely Cancelled</span>;
+                            return <span className="badge bg-white/[0.04] text-white/20">Unknown</span>;
+                          })()}
                         </div>
+                      </div>
+                      {/* Actions */}
+                      <div className="mt-3 flex gap-1.5 border-t border-white/[0.04] pt-3">
+                        <button
+                          className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1"
+                          onClick={() => window.open(`https://${sub.domain}`, '_blank', 'noopener,noreferrer')}
+                        >
+                          Visit Site
+                        </button>
+                        {(sub.status ?? (sub.active ? 'active' : 'cancelled')) === 'active' && (
+                          <button
+                            className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1 !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
+                            onClick={() => window.open(`https://www.google.com/search?q=how+to+cancel+${encodeURIComponent(sub.name)}+subscription`, '_blank', 'noopener,noreferrer')}
+                          >
+                            Cancel Guide
+                          </button>
+                        )}
+                        {sub.status === 'failed' && (
+                          <button
+                            className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1 !bg-[#f97316]/8 !text-[#f97316]/60 !border-[#f97316]/10"
+                            onClick={() => window.open(`https://${sub.domain}/account/billing`, '_blank', 'noopener,noreferrer')}
+                          >
+                            Fix Payment
+                          </button>
+                        )}
                       </div>
                     </motion.div>
                   ))}
