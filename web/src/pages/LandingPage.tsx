@@ -66,12 +66,12 @@ export default function LandingPage() {
 
       {/* Features */}
       <section id="features" className="border-t border-gray-200">
-        <div className="mx-auto max-w-4xl px-6 py-16">
+        <div className="mx-auto max-w-4xl px-6 py-16 text-center">
           <h2 className="text-2xl font-bold">Four scanners. One pass.</h2>
           <p className="mt-2 text-gray-600">Every tool you need to map and reclaim your digital footprint.</p>
           <div className="mt-8 grid gap-6 sm:grid-cols-2">
             {features.map((f) => (
-              <div key={f.title} className="rounded border border-gray-200 p-6">
+              <div key={f.title} className="rounded border border-gray-200 p-6 text-left">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold">{f.title}</h3>
                   <span className="text-sm text-gray-500">{f.stat}</span>
@@ -105,11 +105,11 @@ export default function LandingPage() {
 
       {/* How it works */}
       <section className="border-t border-gray-200">
-        <div className="mx-auto max-w-4xl px-6 py-16">
+        <div className="mx-auto max-w-4xl px-6 py-16 text-center">
           <h2 className="text-2xl font-bold">Three steps. Full visibility.</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-3">
             {steps.map((s) => (
-              <div key={s.num} className="rounded border border-gray-200 p-6">
+              <div key={s.num} className="rounded border border-gray-200 p-6 text-left">
                 <span className="text-sm font-bold text-gray-400">Step {s.num}</span>
                 <h3 className="mt-2 font-semibold">{s.title}</h3>
                 <p className="mt-1 text-sm text-gray-600">{s.desc}</p>
@@ -121,7 +121,7 @@ export default function LandingPage() {
 
       {/* Privacy */}
       <section className="border-t border-gray-200">
-        <div className="mx-auto max-w-4xl px-6 py-16">
+        <div className="mx-auto max-w-4xl px-6 py-16 text-center">
           <h2 className="text-2xl font-bold">Built for the privacy-conscious.</h2>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {[
@@ -130,13 +130,13 @@ export default function LandingPage() {
               { title: 'No tracking', desc: "No analytics, no cookies, no fingerprinting. We don't know who you are." },
               { title: 'Open architecture', desc: 'Breach data comes from XposedOrNot, a free and open breach database.' },
             ].map((item) => (
-              <div key={item.title} className="rounded border border-gray-200 p-6">
+              <div key={item.title} className="rounded border border-gray-200 p-6 text-left">
                 <h3 className="font-semibold">{item.title}</h3>
                 <p className="mt-2 text-sm text-gray-600">{item.desc}</p>
               </div>
             ))}
           </div>
-          <div className="mt-6 rounded border border-gray-200 p-6">
+          <div className="mt-6 rounded border border-gray-200 p-6 text-left">
             <h3 className="text-sm font-semibold text-gray-500 uppercase">Data Flow</h3>
             <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded border border-gray-200 bg-gray-50 px-3 py-1">Your email</span>
