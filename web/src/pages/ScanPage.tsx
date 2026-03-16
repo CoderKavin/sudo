@@ -88,27 +88,30 @@ export default function ScanPage() {
     setStep('complete');
   }, [localEmails, store]);
 
+  const scoreColor = summaryStats.privacyScore > 70 ? '#34c759'
+    : summaryStats.privacyScore > 40 ? '#ff9500'
+    : '#ff3b30';
+
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-20">
-      <div className="w-full max-w-lg">
-        {step === 'connect' && (
-          <button
-            onClick={() => navigate('/')}
-            className="mb-6 text-sm text-gray-500 hover:text-gray-700"
-          >
-            ← Back
-          </button>
-        )}
+      <div className="w-full max-w-[520px]">
 
-        {/* Step 1: Connect emails */}
+        {/* Step 1: Connect */}
         {step === 'connect' && (
           <div>
-            <h1 className="text-2xl font-bold">Connect your email</h1>
-            <p className="mt-2 text-sm text-gray-600">
+            <button
+              onClick={() => navigate('/')}
+              className="mb-8 text-[14px] font-medium text-black/30 transition-colors hover:text-black/60"
+            >
+              ← Back
+            </button>
+
+            <h1 className="text-[2rem] font-bold tracking-tight text-[#1d1d1f]">Connect your email</h1>
+            <p className="mt-2 text-[15px] text-black/40">
               Add one or more email accounts to scan your full digital footprint.
             </p>
 
-            <div className="mt-6 rounded border border-gray-200 p-6">
+            <div className="apple-card mt-8">
               <div className="flex gap-3">
                 <input
                   type="email"
@@ -116,54 +119,49 @@ export default function ScanPage() {
                   onChange={(e) => setEmailInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && addEmail()}
                   placeholder="you@gmail.com"
-                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-500"
+                  className="apple-input flex-1"
                 />
-                <button
-                  onClick={addEmail}
-                  className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-                >
-                  + Add
-                </button>
+                <button className="apple-btn-sm" onClick={addEmail}>Add</button>
               </div>
 
               {localEmails.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="text-xs font-medium uppercase text-gray-500">
-                    Connected ({localEmails.length})
-                  </div>
-                  {localEmails.map((e) => (
-                    <div
-                      key={e.email}
-                      className="flex items-center justify-between rounded border border-gray-200 px-4 py-2"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{e.email}</span>
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500">
-                          {e.provider}
-                        </span>
-                      </div>
-                      <button
-                        onClick={() => removeEmail(e.email)}
-                        className="text-sm text-gray-400 hover:text-red-500"
+                <div className="mt-5">
+                  <p className="section-label mb-3">Connected ({localEmails.length})</p>
+                  <div className="space-y-2">
+                    {localEmails.map((e) => (
+                      <div
+                        key={e.email}
+                        className="flex items-center justify-between rounded-xl bg-black/[0.02] px-4 py-3"
                       >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center gap-3">
+                          <span className="text-[14px] font-medium text-[#1d1d1f]">{e.email}</span>
+                          <span className="rounded-full bg-black/[0.05] px-2 py-0.5 text-[11px] font-medium text-black/40">
+                            {e.provider}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => removeEmail(e.email)}
+                          className="text-[13px] font-medium text-black/25 transition-colors hover:text-[#ff3b30]"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
               <button
                 onClick={startScan}
                 disabled={localEmails.length === 0}
-                className="mt-6 w-full rounded bg-black px-4 py-3 text-sm text-white hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="apple-btn-primary mt-6 w-full disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 {localEmails.length === 0
                   ? 'Add an email to start'
                   : `Scan ${localEmails.length} account${localEmails.length > 1 ? 's' : ''}`}
               </button>
 
-              <p className="mt-3 text-center text-xs text-gray-400">
+              <p className="mt-4 text-center text-[12px] text-black/25">
                 All scanning happens in your browser. We never see your emails.
               </p>
             </div>
@@ -173,21 +171,24 @@ export default function ScanPage() {
         {/* Step 2: Scanning */}
         {step === 'scanning' && (
           <div className="text-center">
-            <h1 className="text-2xl font-bold">Scanning...</h1>
-            <p className="mt-2 text-sm text-gray-600">
-              Analyzing <span className="font-medium">{currentScanEmail}</span>
+            <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-black/[0.03]">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-black/10 border-t-[#1d1d1f]" />
+            </div>
+            <h1 className="text-[2rem] font-bold tracking-tight text-[#1d1d1f]">Scanning...</h1>
+            <p className="mt-2 text-[15px] text-black/40">
+              Analyzing <span className="font-medium text-[#1d1d1f]">{currentScanEmail}</span>
             </p>
 
-            <div className="mt-8">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
+            <div className="mt-10">
+              <div className="h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
                 <div
-                  className="h-full rounded-full bg-black transition-all duration-300"
+                  className="h-full rounded-full bg-[#1d1d1f] transition-all duration-300"
                   style={{ width: `${scanProgress}%` }}
                 />
               </div>
-              <div className="mt-2 flex justify-between text-sm text-gray-500">
+              <div className="mt-3 flex justify-between text-[13px] text-black/30">
                 <span>{scanStage}</span>
-                <span>{scanProgress}%</span>
+                <span className="tabular-nums font-medium">{scanProgress}%</span>
               </div>
             </div>
           </div>
@@ -197,50 +198,48 @@ export default function ScanPage() {
         {step === 'complete' && (
           <div>
             <div className="text-center">
-              <h1 className="text-2xl font-bold">Scan Complete</h1>
-              <p className="mt-2 text-sm text-gray-600">
+              <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#34c759]/10">
+                <svg className="h-7 w-7 text-[#34c759]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <h1 className="text-[2rem] font-bold tracking-tight text-[#1d1d1f]">Scan Complete</h1>
+              <p className="mt-2 text-[15px] text-black/40">
                 Here's what we found across {localEmails.length} account{localEmails.length > 1 ? 's' : ''}
               </p>
             </div>
 
-            <div className="mt-6 rounded border border-gray-200 p-6">
-              <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="apple-card mt-8">
+              <div className="grid grid-cols-2 gap-6 text-center">
                 <div>
-                  <div className="text-3xl font-bold text-red-600 tabular-nums">{summaryStats.breaches}</div>
-                  <div className="mt-1 text-sm text-gray-600">Data Breaches</div>
+                  <div className="text-[2rem] font-bold tracking-tight text-[#ff3b30]">{summaryStats.breaches}</div>
+                  <div className="text-[13px] text-black/40">Data Breaches</div>
                 </div>
                 <div>
-                  <div className="text-3xl font-bold text-orange-600 tabular-nums">{summaryStats.brokers}</div>
-                  <div className="mt-1 text-sm text-gray-600">Data Brokers</div>
+                  <div className="text-[2rem] font-bold tracking-tight text-[#ff9500]">{summaryStats.brokers}</div>
+                  <div className="text-[13px] text-black/40">Data Brokers</div>
                 </div>
               </div>
 
               {summaryStats.breaches === 0 && (
-                <div className="mt-4 rounded bg-green-50 p-3 text-center text-sm text-green-700">
-                  No known breaches found for this email
+                <div className="mt-5 rounded-xl bg-[#34c759]/8 p-4 text-center">
+                  <span className="text-[14px] font-medium text-[#34c759]">No known breaches found</span>
                 </div>
               )}
 
               <div className="mt-6 text-center">
-                <div className="text-xs font-medium uppercase text-gray-500">Privacy Score</div>
-                <div
-                  className="mt-1 text-4xl font-bold tabular-nums"
-                  style={{
-                    color: summaryStats.privacyScore > 70 ? '#16a34a'
-                      : summaryStats.privacyScore > 40 ? '#ca8a04'
-                      : '#dc2626',
-                  }}
-                >
+                <p className="section-label mb-1">Privacy Score</p>
+                <div className="text-[3rem] font-bold tracking-tight" style={{ color: scoreColor }}>
                   {summaryStats.privacyScore}
-                  <span className="text-lg text-gray-400">/100</span>
+                  <span className="text-[1rem] font-medium text-black/20">/100</span>
                 </div>
               </div>
 
               <button
+                className="apple-btn-primary mt-6 w-full"
                 onClick={() => navigate('/dashboard')}
-                className="mt-6 w-full rounded bg-black px-4 py-3 text-sm text-white hover:bg-gray-800"
               >
-                View Full Report →
+                View Full Report
               </button>
             </div>
           </div>

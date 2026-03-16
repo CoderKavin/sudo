@@ -5,7 +5,7 @@ import ScanPage from './pages/ScanPage'
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[var(--bg-main)]">
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/scan" element={<ScanPage />} />
