@@ -62,6 +62,12 @@ export default function ScanPage() {
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
     store.updatePrivacyScore(lastScore);
+    store.addScoreSnapshot({
+      date: new Date().toISOString(),
+      score: lastScore,
+      breachCount: allBreaches.length,
+      brokerCount: allBrokers.length,
+    });
     store.setScanComplete();
     setSummaryStats({ breaches: allBreaches.length, brokers: allBrokers.length, privacyScore: lastScore });
     setStep('complete');

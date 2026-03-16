@@ -9,8 +9,17 @@ import {
   getExtensionData,
   disconnectGmail,
 } from '../lib/extensionBridge';
+import { scanDarkWeb } from '../lib/darkWebMonitor';
+import { generatePrivacyReport } from '../lib/pdfReport';
+import {
+  generateDeletionEmail,
+  generateBrokerOptOut,
+  generateCancelEmail,
+  getBreachRemediationSteps,
+  copyToClipboard,
+} from '../lib/actionTemplates';
 
-type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions';
+type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions' | 'darkweb';
 
 const SEV: Record<string, { bg: string; color: string }> = {
   critical: { bg: 'rgba(239,68,68,0.1)', color: '#ef4444' },
@@ -25,23 +34,6 @@ const STATUS_STYLE: Record<string, string> = {
   removed: 'bg-[#22c55e]/10 text-[#22c55e]',
 };
 
-/* Breach-specific remediation steps */
-function getBreachActions(dataTypes: string[]): string[] {
-  const actions: string[] = [];
-  const lower = dataTypes.map((d) => d.toLowerCase()).join(' ');
-
-  if (lower.includes('password')) actions.push('Change your password immediately');
-  if (lower.includes('password')) actions.push('Enable two-factor authentication');
-  if (lower.includes('email')) actions.push('Watch for phishing emails targeting this account');
-  if (lower.includes('social security') || lower.includes('ssn')) actions.push('Freeze your credit with all three bureaus');
-  if (lower.includes('credit card') || lower.includes('financial') || lower.includes('bank')) actions.push('Monitor bank statements for unauthorized charges');
-  if (lower.includes('phone')) actions.push('Set up a SIM lock with your carrier');
-  if (lower.includes('passport') || lower.includes('driver')) actions.push('Report compromised ID documents to issuing authority');
-
-  if (actions.length === 0) actions.push('Review account security settings');
-  return actions;
-}
-
 export default function DashboardPage() {
   const navigate = useNavigate();
   const store = useStore();
@@ -51,6 +43,17 @@ export default function DashboardPage() {
   const [extScanning, setExtScanning] = useState(false);
   const [extError, setExtError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string | null>(null);
+  const [darkWebProgress, setDarkWebProgress] = useState('');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
+  const [expandedBroker, setExpandedBroker] = useState<string | null>(null);
+  const [expandedSub, setExpandedSub] = useState<string | null>(null);
+
+  const handleCopy = useCallback(async (text: string, id: string) => {
+    await copyToClipboard(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  }, []);
 
   // Load extension data on mount
   useEffect(() => {
@@ -102,6 +105,38 @@ export default function DashboardPage() {
     store.setDiscoveredAccounts([]);
     store.setTrackedSubscriptions([]);
   }, []);
+
+  const handleDarkWebScan = useCallback(async () => {
+    const emails = store.connectedEmails.map((e) => e.email);
+    if (emails.length === 0) return;
+    store.setDarkWebScanning(true);
+    setDarkWebProgress('Starting dark web scan...');
+    try {
+      const alerts = await scanDarkWeb(emails, setDarkWebProgress);
+      // Preserve resolved state from existing alerts
+      const existingResolved = new Set(store.darkWebAlerts.filter((a) => a.resolved).map((a) => a.id));
+      const merged = alerts.map((a) => existingResolved.has(a.id) ? { ...a, resolved: true } : a);
+      store.setDarkWebAlerts(merged);
+    } catch {
+      setDarkWebProgress('Dark web scan failed');
+    } finally {
+      store.setDarkWebScanning(false);
+      setDarkWebProgress('');
+    }
+  }, [store]);
+
+  const handleExportPdf = useCallback(() => {
+    generatePrivacyReport({
+      emails: store.connectedEmails.map((e) => e.email),
+      privacyScore: store.privacyScore,
+      scoreHistory: store.scoreHistory,
+      breaches: store.breaches,
+      dataBrokers: store.dataBrokers,
+      accounts: store.discoveredAccounts,
+      subscriptions: store.trackedSubscriptions,
+      darkWebAlerts: store.darkWebAlerts,
+    });
+  }, [store]);
 
   if (store.breaches.length === 0 && store.dataBrokers.length === 0) {
     return (
@@ -238,7 +273,8 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button className="btn-sm" onClick={handleExportReport}>Export</button>
+          <button className="btn-sm" onClick={handleExportPdf}>PDF Report</button>
+          <button className="btn-sm" onClick={handleExportReport}>JSON</button>
           <button className="btn-sm" onClick={() => navigate('/scan')}>+ Add Email</button>
         </div>
       </motion.div>
@@ -248,19 +284,46 @@ export default function DashboardPage() {
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="mb-10 grid gap-5 sm:grid-cols-3"
+        className="mb-10 grid gap-5 sm:grid-cols-4"
       >
-        {/* Score */}
+        {/* Score + History Sparkline */}
         <div className="glass-card flex flex-col items-center justify-center py-8 relative overflow-hidden">
           <motion.div
             className="absolute inset-0 opacity-20"
             style={{ background: `radial-gradient(circle at 50% 50%, ${scoreColor}20, transparent 70%)` }}
           />
-          <div className="relative">
+          <div className="relative text-center">
             <div className="text-[3rem] font-bold tracking-tight tabular-nums" style={{ color: scoreColor }}>
               {store.privacyScore}
             </div>
-            <div className="mt-1 text-center text-[13px] text-white/25">Privacy Score</div>
+            <div className="mt-1 text-[13px] text-white/25">Privacy Score</div>
+            {/* Sparkline */}
+            {store.scoreHistory.length > 1 && (
+              <svg viewBox="0 0 120 30" className="mx-auto mt-3 h-6 w-24" preserveAspectRatio="none">
+                <polyline
+                  fill="none"
+                  stroke={scoreColor}
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  points={store.scoreHistory.map((s, i) => {
+                    const x = (i / (store.scoreHistory.length - 1)) * 120;
+                    const y = 30 - (s.score / 100) * 28;
+                    return `${x},${y}`;
+                  }).join(' ')}
+                />
+              </svg>
+            )}
+            {store.scoreHistory.length > 1 && (() => {
+              const first = store.scoreHistory[0].score;
+              const last = store.scoreHistory[store.scoreHistory.length - 1].score;
+              const diff = last - first;
+              return (
+                <div className={`mt-1 text-[11px] ${diff >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                  {diff >= 0 ? '+' : ''}{diff} pts since {new Date(store.scoreHistory[0].date).toLocaleDateString()}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
@@ -284,6 +347,20 @@ export default function DashboardPage() {
             <div className="mt-3 flex items-center gap-1.5 text-[12px] text-[#f97316]/60">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#f97316] animate-pulse" />
               Your data is being sold
+            </div>
+          )}
+        </div>
+
+        {/* Dark Web */}
+        <div className="glass-card">
+          <div className="text-[2rem] font-bold tracking-tight text-[#a78bfa] tabular-nums">
+            {store.darkWebAlerts.filter((a) => !a.resolved).length}
+          </div>
+          <div className="mt-1 text-[14px] text-white/35">Dark Web Alerts</div>
+          {store.darkWebAlerts.filter((a) => !a.resolved).length > 0 && (
+            <div className="mt-3 flex items-center gap-1.5 text-[12px] text-[#a78bfa]/60">
+              <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#a78bfa] animate-pulse" />
+              Credentials exposed
             </div>
           )}
         </div>
@@ -317,11 +394,13 @@ export default function DashboardPage() {
         className="mb-6"
       >
         <div className="flex gap-1 rounded-2xl bg-white/[0.02] border border-white/[0.04] p-1.5">
-          {(['breaches', 'brokers', 'accounts', 'subscriptions'] as Tab[]).map((tab) => {
+          {(['breaches', 'brokers', 'darkweb', 'accounts', 'subscriptions'] as Tab[]).map((tab) => {
             const isActive = activeTab === tab;
+            const label = tab === 'darkweb' ? 'Dark Web' : tab.charAt(0).toUpperCase() + tab.slice(1);
             const count =
               tab === 'breaches' ? unresolvedBreaches
               : tab === 'brokers' ? exposedBrokers
+              : tab === 'darkweb' ? store.darkWebAlerts.filter((a) => !a.resolved).length
               : tab === 'accounts' ? store.discoveredAccounts.length
               : tab === 'subscriptions' ? store.trackedSubscriptions.length
               : null;
@@ -335,7 +414,7 @@ export default function DashboardPage() {
                     : 'text-white/25 hover:text-white/40 border border-transparent'
                 }`}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {label}
                 {count !== null && count > 0 && (
                   <span className={`ml-1.5 tabular-nums ${isActive ? 'text-white/50' : 'text-white/15'}`}>
                     ({count})
@@ -460,7 +539,6 @@ export default function DashboardPage() {
             .map((breach, i) => {
               const sev = SEV[breach.severity];
               const isExpanded = expandedBreach === breach.id;
-              const actions = getBreachActions(breach.dataTypes);
               return (
                 <motion.div
                   key={breach.id}
@@ -501,38 +579,97 @@ export default function DashboardPage() {
                     ))}
                   </div>
 
-                  {/* Expanded action panel */}
+                  {/* Expanded remediation panel */}
                   <AnimatePresence>
-                    {isExpanded && !breach.resolved && (
-                      <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="overflow-hidden"
-                      >
-                        <div className="mt-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5">
-                          <p className="text-[12px] font-semibold uppercase tracking-wider text-white/25 mb-3">
-                            Recommended Actions
-                          </p>
-                          <ul className="space-y-2.5">
-                            {actions.map((action, idx) => (
-                              <li key={idx} className="flex items-start gap-2.5 text-[13px] text-white/50">
-                                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/10 text-[10px] text-[var(--accent)]">
-                                  {idx + 1}
-                                </span>
-                                {action}
-                              </li>
-                            ))}
-                          </ul>
-                          <button
-                            className="btn-sm mt-5 !bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20"
-                            onClick={() => confirmResolve(breach.id)}
-                          >
-                            Mark as Resolved
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
+                    {isExpanded && !breach.resolved && (() => {
+                      const steps = getBreachRemediationSteps(breach.name, breach.dataTypes);
+                      const completedSteps = store.remediationProgress[breach.id] || [];
+                      const progress = steps.length > 0 ? Math.round((completedSteps.length / steps.length) * 100) : 0;
+                      return (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="mt-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5">
+                            {/* Progress bar */}
+                            <div className="mb-4 flex items-center gap-3">
+                              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                                <motion.div
+                                  className="h-full rounded-full bg-[var(--accent)]"
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${progress}%` }}
+                                  transition={{ duration: 0.5 }}
+                                />
+                              </div>
+                              <span className="text-[11px] font-medium text-white/30 tabular-nums">{completedSteps.length}/{steps.length}</span>
+                            </div>
+
+                            <p className="text-[12px] font-semibold uppercase tracking-wider text-white/25 mb-3">
+                              Remediation Checklist
+                            </p>
+                            <ul className="space-y-2">
+                              {steps.map((step) => {
+                                const done = completedSteps.includes(step.id);
+                                const prioColors: Record<string, string> = {
+                                  critical: 'text-[#ef4444]', high: 'text-[#f97316]',
+                                  medium: 'text-[#eab308]', low: 'text-[#3b82f6]',
+                                };
+                                return (
+                                  <li key={step.id} className="group">
+                                    <div className="flex items-start gap-3">
+                                      <button
+                                        onClick={() => store.toggleRemediationStep(breach.id, step.id)}
+                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                                          done
+                                            ? 'bg-[#22c55e]/20 border-[#22c55e]/30 text-[#22c55e]'
+                                            : 'border-white/10 text-transparent hover:border-white/20'
+                                        }`}
+                                      >
+                                        {done && (
+                                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                          </svg>
+                                        )}
+                                      </button>
+                                      <div className={`flex-1 ${done ? 'opacity-40' : ''}`}>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`text-[13px] font-medium ${done ? 'line-through text-white/30' : 'text-white/70'}`}>
+                                            {step.label}
+                                          </span>
+                                          <span className={`text-[9px] font-semibold uppercase ${prioColors[step.priority]}`}>
+                                            {step.priority}
+                                          </span>
+                                        </div>
+                                        <p className="mt-0.5 text-[12px] text-white/20">{step.description}</p>
+                                        {step.actionUrl && !done && (
+                                          <button
+                                            className="btn-sm mt-2 !py-1 !px-2.5 !text-[10px]"
+                                            onClick={() => window.open(step.actionUrl, '_blank', 'noopener,noreferrer')}
+                                          >
+                                            {step.actionLabel || 'Take Action'} →
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                            <div className="mt-5 flex gap-2">
+                              <button
+                                className="btn-sm !bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20"
+                                onClick={() => confirmResolve(breach.id)}
+                                disabled={completedSteps.length === 0}
+                              >
+                                {progress === 100 ? 'All Done — Mark Resolved' : 'Mark as Resolved'}
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      );
+                    })()}
                   </AnimatePresence>
                 </motion.div>
               );
@@ -581,12 +718,20 @@ export default function DashboardPage() {
                   ))}
                 </div>
                 {broker.status === 'found' && (
-                  <button
-                    className="btn-sm mt-3 !text-[12px]"
-                    onClick={() => handleBrokerRemoval(broker.id, broker.url)}
-                  >
-                    Request Removal →
-                  </button>
+                  <div className="mt-3 flex gap-1.5">
+                    <button
+                      className="btn-sm !text-[12px] flex-1"
+                      onClick={() => setExpandedBroker(expandedBroker === broker.id ? null : broker.id)}
+                    >
+                      {expandedBroker === broker.id ? 'Close' : 'Remove My Data'}
+                    </button>
+                    <button
+                      className="btn-sm !text-[12px]"
+                      onClick={() => handleBrokerRemoval(broker.id, broker.url)}
+                    >
+                      Opt-Out Page →
+                    </button>
+                  </div>
                 )}
                 {broker.status === 'removing' && (
                   <div className="mt-3 flex items-center gap-2">
@@ -605,6 +750,48 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 )}
+
+                {/* Inline opt-out email */}
+                <AnimatePresence>
+                  {expandedBroker === broker.id && broker.status === 'found' && (() => {
+                    const email = generateBrokerOptOut(broker.name, broker.email, broker.dataTypes);
+                    return (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-4 rounded-xl bg-white/[0.02] border border-white/[0.05] p-4">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/25 mb-2">
+                            Removal Request Email
+                          </p>
+                          <div className="rounded-lg bg-white/[0.02] p-3 text-[12px] text-white/40 leading-relaxed max-h-32 overflow-y-auto font-mono">
+                            <div className="text-white/20 mb-1">Subject: {email.subject}</div>
+                            {email.body}
+                          </div>
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              className={`btn-sm !text-[11px] flex-1 ${copiedId === `broker-${broker.id}` ? '!bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20' : ''}`}
+                              onClick={() => handleCopy(`Subject: ${email.subject}\n\n${email.body}`, `broker-${broker.id}`)}
+                            >
+                              {copiedId === `broker-${broker.id}` ? 'Copied!' : 'Copy Email'}
+                            </button>
+                            <button
+                              className="btn-sm !text-[11px]"
+                              onClick={() => {
+                                window.open(`mailto:privacy@${broker.name.toLowerCase().replace(/\s+/g, '')}.com?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self');
+                                store.markBrokerRemoving(broker.id);
+                              }}
+                            >
+                              Open in Mail
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    );
+                  })()}
+                </AnimatePresence>
               </motion.div>
             ))}
           </div>
@@ -718,12 +905,57 @@ export default function DashboardPage() {
                           </button>
                           <button
                             className="btn-sm !py-1 !px-2.5 !text-[10px] !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
-                            onClick={() => window.open(`https://www.google.com/search?q=how+to+delete+${encodeURIComponent(account.name)}+account`, '_blank', 'noopener,noreferrer')}
+                            onClick={() => setExpandedAccount(expandedAccount === account.id ? null : account.id)}
                           >
-                            Delete Guide
+                            {expandedAccount === account.id ? 'Close' : 'Delete Account'}
                           </button>
                         </div>
                       </div>
+
+                      {/* Inline deletion request */}
+                      <AnimatePresence>
+                        {expandedAccount === account.id && (() => {
+                          const userEmail = store.extensionEmail || store.connectedEmails[0]?.email || '';
+                          const email = generateDeletionEmail(account.name, userEmail);
+                          return (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 rounded-xl bg-white/[0.02] border border-white/[0.05] p-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/25 mb-2">
+                                  GDPR/CCPA Deletion Request
+                                </p>
+                                <div className="rounded-lg bg-white/[0.02] p-2 text-[11px] text-white/35 leading-relaxed max-h-24 overflow-y-auto font-mono">
+                                  {email.body.slice(0, 200)}...
+                                </div>
+                                <div className="mt-2 flex gap-1.5">
+                                  <button
+                                    className={`btn-sm !py-1 !px-2 !text-[10px] flex-1 ${copiedId === `acc-${account.id}` ? '!bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20' : ''}`}
+                                    onClick={() => handleCopy(`Subject: ${email.subject}\n\n${email.body}`, `acc-${account.id}`)}
+                                  >
+                                    {copiedId === `acc-${account.id}` ? 'Copied!' : 'Copy Email'}
+                                  </button>
+                                  <button
+                                    className="btn-sm !py-1 !px-2 !text-[10px]"
+                                    onClick={() => window.open(`mailto:support@${account.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self')}
+                                  >
+                                    Send
+                                  </button>
+                                  <button
+                                    className="btn-sm !py-1 !px-2 !text-[10px]"
+                                    onClick={() => window.open(`https://www.google.com/search?q=how+to+delete+${encodeURIComponent(account.name)}+account`, '_blank', 'noopener,noreferrer')}
+                                  >
+                                    Guide
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })()}
+                      </AnimatePresence>
                     </motion.div>
                   ))}
                 </div>
@@ -866,9 +1098,9 @@ export default function DashboardPage() {
                         {(sub.status ?? (sub.active ? 'active' : 'cancelled')) === 'active' && (
                           <button
                             className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1 !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
-                            onClick={() => window.open(`https://www.google.com/search?q=how+to+cancel+${encodeURIComponent(sub.name)}+subscription`, '_blank', 'noopener,noreferrer')}
+                            onClick={() => setExpandedSub(expandedSub === sub.id ? null : sub.id)}
                           >
-                            Cancel Guide
+                            {expandedSub === sub.id ? 'Close' : 'Cancel'}
                           </button>
                         )}
                         {sub.status === 'failed' && (
@@ -880,6 +1112,62 @@ export default function DashboardPage() {
                           </button>
                         )}
                       </div>
+
+                      {/* Inline cancel action */}
+                      <AnimatePresence>
+                        {expandedSub === sub.id && (() => {
+                          const userEmail = store.extensionEmail || store.connectedEmails[0]?.email || '';
+                          const email = generateCancelEmail(sub.name, userEmail);
+                          return (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: 'auto' }}
+                              exit={{ opacity: 0, height: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="mt-3 rounded-xl bg-white/[0.02] border border-white/[0.05] p-4">
+                                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/25 mb-2">
+                                  Cancellation Options
+                                </p>
+                                <div className="space-y-2">
+                                  <button
+                                    className="btn-sm !text-[11px] w-full justify-between"
+                                    onClick={() => window.open(`https://${sub.domain}/account`, '_blank', 'noopener,noreferrer')}
+                                  >
+                                    <span>Go to account settings</span>
+                                    <span className="text-white/20">→</span>
+                                  </button>
+                                  <button
+                                    className="btn-sm !text-[11px] w-full justify-between"
+                                    onClick={() => window.open(`https://www.google.com/search?q=how+to+cancel+${encodeURIComponent(sub.name)}+subscription`, '_blank', 'noopener,noreferrer')}
+                                  >
+                                    <span>Step-by-step cancellation guide</span>
+                                    <span className="text-white/20">→</span>
+                                  </button>
+                                </div>
+                                <div className="mt-3 rounded-lg bg-white/[0.02] p-3 text-[11px] text-white/35 leading-relaxed max-h-24 overflow-y-auto font-mono">
+                                  <div className="text-white/20 mb-1">Subject: {email.subject}</div>
+                                  {email.body}
+                                </div>
+                                <div className="mt-2 flex gap-1.5">
+                                  <button
+                                    className={`btn-sm !py-1 !px-2.5 !text-[10px] flex-1 ${copiedId === `sub-${sub.id}` ? '!bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20' : ''}`}
+                                    onClick={() => handleCopy(`Subject: ${email.subject}\n\n${email.body}`, `sub-${sub.id}`)}
+                                  >
+                                    {copiedId === `sub-${sub.id}` ? 'Copied!' : 'Copy Email'}
+                                  </button>
+                                  <button
+                                    className="btn-sm !py-1 !px-2.5 !text-[10px]"
+                                    onClick={() => window.open(`mailto:support@${sub.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self')}
+                                  >
+                                    Open in Mail
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          );
+                        })()}
+                      </AnimatePresence>
                     </motion.div>
                   ))}
               </div>
@@ -887,6 +1175,325 @@ export default function DashboardPage() {
           )}
         </div>
       )}
+
+      {/* ─── Dark Web — HUD/FUI Mode ─── */}
+      {activeTab === 'darkweb' && (
+        <motion.div
+          key="darkweb-hud"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="hud-mode relative -mx-6 -mb-6 px-6 pb-6 pt-2 min-h-[60vh]"
+          style={{ fontFamily: "'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" }}
+        >
+          {/* Overlays */}
+          <div className="hud-grid" style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
+          <div className="hud-noise" style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
+          <motion.div
+            className="hud-scanline"
+            style={{ position: 'absolute', inset: 0, zIndex: 2 }}
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 0 }}
+            transition={{ delay: 2.5, duration: 0.3 }}
+          />
+
+          {/* Glitch entrance wrapper */}
+          <div className="hud-glitch-in relative" style={{ zIndex: 3 }}>
+
+          {/* Connector SVG lines */}
+          <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
+            <motion.line
+              x1="10%" y1="80" x2="90%" y2="80"
+              stroke="rgba(0,255,136,0.1)" strokeWidth="1"
+              strokeDasharray="200"
+              initial={{ strokeDashoffset: 200 }}
+              animate={{ strokeDashoffset: 0 }}
+              transition={{ duration: 1.5, delay: 0.5 }}
+            />
+            <motion.line
+              x1="50%" y1="0" x2="50%" y2="100%"
+              stroke="rgba(0,255,136,0.04)" strokeWidth="1"
+              strokeDasharray="200"
+              initial={{ strokeDashoffset: 200 }}
+              animate={{ strokeDashoffset: 0 }}
+              transition={{ duration: 2, delay: 0.8 }}
+            />
+          </svg>
+
+          {store.connectedEmails.length === 0 ? (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="py-20 text-center hud-flicker"
+            >
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#00ff88]/20">
+                <motion.div
+                  className="h-3 w-3 rounded-full bg-[#00ff88]/40"
+                  animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+              </div>
+              <h3 className="text-[15px] font-medium hud-neon tracking-[0.15em] uppercase">No Targets Linked</h3>
+              <p className="mx-auto mt-3 max-w-sm text-[12px] leading-relaxed text-[#00ff88]/30 tracking-wider">
+                Connect email addresses to initiate dark web reconnaissance scan.
+              </p>
+              <button
+                className="mt-5 px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.2em] border border-[#00ff88]/30 text-[#00ff88]/70 hover:bg-[#00ff88]/10 hover:text-[#00ff88] transition-all"
+                onClick={() => navigate('/scan')}
+              >
+                Initialize Scan
+              </button>
+            </motion.div>
+          ) : (
+            <>
+              {/* HUD Header — Telemetry Bar */}
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.6 }}
+                className="hud-flicker mb-6"
+                style={{ animationDelay: '0.1s' }}
+              >
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#00ff88]/30 mb-3">
+                  <span>Dark Web Intelligence</span>
+                  <span className="hud-blink">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#00ff88]/60 mr-1.5" />
+                    System Active
+                  </span>
+                </div>
+
+                <div className="hud-panel hud-panel-bottom">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-4">
+                        <span className="text-[2rem] font-bold tabular-nums hud-neon-red">
+                          {store.darkWebAlerts.filter((a) => !a.resolved).length}
+                        </span>
+                        <div>
+                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#00ff88]/40">Threat Signals</span>
+                          {store.darkWebLastChecked && (
+                            <div className="text-[10px] text-[#00ff88]/20 mt-0.5">
+                              Last sweep: {new Date(store.darkWebLastChecked).toLocaleDateString()}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-[#00ff88]/20 tracking-wider">
+                        {store.connectedEmails.map((e) => (
+                          <span key={e.email} className="flex items-center gap-1">
+                            <span className="h-1 w-1 rounded-full bg-[#00ff88]/30" />
+                            {e.email}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      className="px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] border transition-all disabled:opacity-30"
+                      style={{
+                        borderColor: store.darkWebScanning ? 'rgba(255,170,0,0.3)' : 'rgba(0,255,136,0.25)',
+                        color: store.darkWebScanning ? '#ffaa00' : 'rgba(0,255,136,0.7)',
+                        background: store.darkWebScanning ? 'rgba(255,170,0,0.05)' : 'rgba(0,255,136,0.05)',
+                      }}
+                      onClick={handleDarkWebScan}
+                      disabled={store.darkWebScanning}
+                    >
+                      {store.darkWebScanning ? 'Scanning...' : 'Run Sweep'}
+                    </button>
+                  </div>
+
+                  {/* Telemetry stats row */}
+                  <div className="mt-4 grid grid-cols-4 gap-3">
+                    {[
+                      { label: 'Critical', value: store.darkWebAlerts.filter((a) => a.severity === 'critical' && !a.resolved).length, color: '#ff3366' },
+                      { label: 'High', value: store.darkWebAlerts.filter((a) => a.severity === 'high' && !a.resolved).length, color: '#ffaa00' },
+                      { label: 'Medium', value: store.darkWebAlerts.filter((a) => a.severity === 'medium' && !a.resolved).length, color: '#00ddff' },
+                      { label: 'Resolved', value: store.darkWebAlerts.filter((a) => a.resolved).length, color: '#00ff88' },
+                    ].map((stat) => (
+                      <div key={stat.label} className="text-center border border-white/[0.04] py-2 bg-white/[0.01]">
+                        <div className="text-[1.1rem] font-bold tabular-nums" style={{ color: stat.color, textShadow: `0 0 8px ${stat.color}33` }}>
+                          {stat.value}
+                        </div>
+                        <div className="text-[9px] uppercase tracking-[0.15em] mt-0.5" style={{ color: `${stat.color}66` }}>
+                          {stat.label}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Scanning progress — HUD style */}
+              {store.darkWebScanning && darkWebProgress && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  className="mb-5"
+                >
+                  <div className="hud-panel hud-panel-bottom text-center relative overflow-hidden hud-hscan">
+                    <div className="mx-auto mb-3 h-px w-48 overflow-hidden bg-[#00ff88]/10 relative">
+                      <motion.div
+                        className="h-full bg-[#00ff88]/60"
+                        animate={{ x: ['-100%', '100%'] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                        style={{ width: '40%' }}
+                      />
+                    </div>
+                    <p className="text-[11px] text-[#00ff88]/40 tracking-wider uppercase">{darkWebProgress}</p>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Filter chips — HUD style */}
+              {store.darkWebAlerts.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.5 }}
+                  className="mb-5 flex flex-wrap gap-1.5"
+                >
+                  {[
+                    { key: null, label: 'ALL', count: store.darkWebAlerts.length },
+                    { key: 'unresolved', label: 'ACTIVE', count: store.darkWebAlerts.filter((a) => !a.resolved).length },
+                    { key: 'credentials', label: 'CREDS', count: store.darkWebAlerts.filter((a) => a.type === 'credentials').length },
+                    { key: 'personal_info', label: 'PII', count: store.darkWebAlerts.filter((a) => a.type === 'personal_info').length },
+                    { key: 'financial', label: 'FIN', count: store.darkWebAlerts.filter((a) => a.type === 'financial').length },
+                  ].filter((f) => f.count > 0).map((f) => (
+                    <button
+                      key={f.key ?? 'all'}
+                      onClick={() => setFilter(filter === f.key ? null : f.key)}
+                      className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.15em] transition-all"
+                      style={{
+                        border: `1px solid ${filter === f.key ? 'rgba(0,255,136,0.4)' : 'rgba(0,255,136,0.1)'}`,
+                        color: filter === f.key ? '#00ff88' : 'rgba(0,255,136,0.3)',
+                        background: filter === f.key ? 'rgba(0,255,136,0.08)' : 'transparent',
+                        textShadow: filter === f.key ? '0 0 6px rgba(0,255,136,0.3)' : 'none',
+                      }}
+                    >{f.label} [{f.count}]</button>
+                  ))}
+                </motion.div>
+              )}
+
+              {/* Empty state */}
+              {store.darkWebAlerts.length === 0 && !store.darkWebScanning && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.6 }}
+                  className="py-16 text-center"
+                >
+                  <div className="text-[12px] uppercase tracking-[0.2em] text-[#00ff88]/20">
+                    {store.darkWebLastChecked
+                      ? '// NO EXPOSURES DETECTED — PERIMETER SECURE'
+                      : '// AWAITING SCAN INITIATION'}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Alert list — HUD panels */}
+              <div className="space-y-3">
+                {store.darkWebAlerts
+                  .filter((alert) => {
+                    if (filter === 'unresolved') return !alert.resolved;
+                    if (filter === 'credentials' || filter === 'personal_info' || filter === 'financial' || filter === 'medical') return alert.type === filter;
+                    return true;
+                  })
+                  .filter((alert) => {
+                    if (!search.trim()) return true;
+                    const q = search.toLowerCase();
+                    return alert.source.toLowerCase().includes(q) || alert.email.toLowerCase().includes(q) || alert.description.toLowerCase().includes(q);
+                  })
+                  .map((alert, i) => {
+                    const hudSev: Record<string, { color: string; label: string }> = {
+                      critical: { color: '#ff3366', label: 'CRIT' },
+                      high: { color: '#ffaa00', label: 'HIGH' },
+                      medium: { color: '#00ddff', label: 'MED' },
+                      low: { color: '#00ff88', label: 'LOW' },
+                    };
+                    const sv = hudSev[alert.severity] || hudSev.low;
+                    const typeLabels: Record<string, string> = {
+                      credentials: 'CRED',
+                      personal_info: 'PII',
+                      financial: 'FIN',
+                      medical: 'MED',
+                    };
+                    return (
+                      <motion.div
+                        key={alert.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.4 + i * 0.06, duration: 0.5 }}
+                        className={`hud-panel hud-panel-bottom hud-flicker transition-opacity ${alert.resolved ? 'opacity-30' : ''}`}
+                        style={{ animationDelay: `${0.3 + i * 0.08}s` }}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className="inline-block h-2 w-2"
+                                style={{ backgroundColor: sv.color, boxShadow: `0 0 6px ${sv.color}66` }}
+                              />
+                              <h3 className="text-[13px] font-semibold text-white/90 tracking-wide uppercase">{alert.source}</h3>
+                              <span
+                                className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.15em] border"
+                                style={{ color: sv.color, borderColor: `${sv.color}33`, background: `${sv.color}0d` }}
+                              >
+                                {sv.label}
+                              </span>
+                              <span className="px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] border border-[#00ddff]/20 text-[#00ddff]/50 bg-[#00ddff]/5">
+                                {typeLabels[alert.type] || alert.type}
+                              </span>
+                              {alert.resolved && (
+                                <span className="px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] border border-[#00ff88]/20 text-[#00ff88]/50 bg-[#00ff88]/5">
+                                  Neutralized
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-1.5 text-[10px] text-[#00ff88]/20 tracking-wider">
+                              {alert.email} // {formatDate(alert.date)}
+                            </p>
+                          </div>
+                          {!alert.resolved && (
+                            <button
+                              className="shrink-0 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.15em] border border-[#00ff88]/20 text-[#00ff88]/50 hover:bg-[#00ff88]/10 hover:text-[#00ff88] hover:border-[#00ff88]/40 transition-all"
+                              onClick={() => store.markDarkWebAlertResolved(alert.id)}
+                            >
+                              Neutralize
+                            </button>
+                          )}
+                        </div>
+                        <p className="mt-3 text-[12px] leading-relaxed text-white/25 tracking-wide">{alert.description}</p>
+                      </motion.div>
+                    );
+                  })}
+              </div>
+            </>
+          )}
+
+          {/* Bottom telemetry bar */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.2 }}
+            className="mt-8 flex items-center justify-between text-[9px] uppercase tracking-[0.25em] text-[#00ff88]/15"
+          >
+            <span>Vanish Dark Web Intelligence Module v2.1</span>
+            <span className="flex items-center gap-2">
+              <span className="hud-blink inline-block h-1 w-1 rounded-full bg-[#00ff88]/30" />
+              Encrypted Channel
+            </span>
+          </motion.div>
+
+          </div>
+        </motion.div>
+      )}
     </motion.div>
   );
+}
+
+function formatDate(d: string): string {
+  try {
+    return new Date(d).toLocaleDateString();
+  } catch {
+    return d;
+  }
 }
