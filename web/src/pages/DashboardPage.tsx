@@ -27,7 +27,7 @@ function CountUp({ target, delay }: { target: number; delay: number }) {
   return <>{value}</>;
 }
 import useStore from '../store/useStore';
-import type { NotificationType } from '../store/useStore';
+// NotificationType used by monitoring.ts
 import {
   isExtensionInstalled,
   connectGmail,
@@ -84,7 +84,6 @@ export default function DashboardPage() {
   const [batchRemovalProgress, setBatchRemovalProgress] = useState<{ current: number; total: number } | null>(null);
   const [passwordCheckerOpen, setPasswordCheckerOpen] = useState(false);
   const [scoreHistoryOpen, setScoreHistoryOpen] = useState(false);
-  const [notifEmailInput, setNotifEmailInput] = useState(store.notificationEmail ?? '');
 
   const handleHudClose = useCallback(() => {
     setHudClosing(true);
@@ -127,6 +126,10 @@ export default function DashboardPage() {
   }, []);
 
   const handleExtensionScan = useCallback(async () => {
+    if (!isExtensionInstalled()) {
+      setExtError('Vanish Chrome extension not detected. Install it to scan your inbox.');
+      return;
+    }
     setExtScanning(true);
     setExtError(null);
     try {
@@ -138,7 +141,7 @@ export default function DashboardPage() {
         setExtError(res.error ?? 'Scan failed');
       }
     } catch {
-      setExtError('Extension scan timed out');
+      setExtError('Extension not responding. Make sure the Vanish extension is installed and enabled.');
     } finally {
       setExtScanning(false);
     }
@@ -474,162 +477,56 @@ export default function DashboardPage() {
         </motion.div>
       </motion.div>
 
-      {/* ─── Continuous Monitoring Toggle ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.08 }}
-        className="mb-5 glass-card !py-3 !px-5 flex items-center justify-between"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#a78bfa]/10">
-            <svg className="h-4 w-4 text-[#a78bfa]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[13px] font-medium text-white/70">Continuous Monitoring</p>
-            <p className="text-[11px] text-white/40">
-              {store.monitoringEnabled
-                ? `Auto-scanning every ${store.monitoringInterval}h${store.darkWebLastChecked ? ` · Last: ${new Date(store.darkWebLastChecked).toLocaleDateString()}` : ''}`
-                : 'Enable to auto-scan for new dark web exposures'}
-            </p>
-          </div>
-        </div>
-        <button
-          onClick={() => store.setMonitoringEnabled(!store.monitoringEnabled)}
-          className="relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer"
-          style={{
-            background: store.monitoringEnabled ? 'rgba(124,106,239,0.5)' : 'rgba(255,255,255,0.08)',
-            border: `1px solid ${store.monitoringEnabled ? 'rgba(124,106,239,0.6)' : 'rgba(255,255,255,0.1)'}`,
-          }}
-        >
-          <span
-            className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform duration-200"
-            style={{
-              background: store.monitoringEnabled ? '#a78bfa' : 'rgba(255,255,255,0.3)',
-              transform: store.monitoringEnabled ? 'translateX(20px)' : 'translateX(0)',
-              boxShadow: store.monitoringEnabled ? '0 0 8px rgba(167,139,250,0.5)' : 'none',
-            }}
-          />
-        </button>
-      </motion.div>
-
-      {/* ─── Email Notifications ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.09 }}
-        className="mb-5 glass-card !py-3 !px-5"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3b82f6]/10">
-              <svg className="h-4 w-4 text-[#3b82f6]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <div>
-              <p className="text-[13px] font-medium text-white/70">Email Alerts</p>
-              <p className="text-[11px] text-white/40">
-                {store.notificationsEnabled
-                  ? `Sending to ${store.notificationEmail ?? 'not set'}`
-                  : 'Get notified when new breaches or dark web exposures are found'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => store.setNotificationsEnabled(!store.notificationsEnabled)}
-            className="relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer"
-            style={{
-              background: store.notificationsEnabled ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.08)',
-              border: `1px solid ${store.notificationsEnabled ? 'rgba(59,130,246,0.6)' : 'rgba(255,255,255,0.1)'}`,
-            }}
-          >
-            <span
-              className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform duration-200"
-              style={{
-                background: store.notificationsEnabled ? '#3b82f6' : 'rgba(255,255,255,0.3)',
-                transform: store.notificationsEnabled ? 'translateX(20px)' : 'translateX(0)',
-                boxShadow: store.notificationsEnabled ? '0 0 8px rgba(59,130,246,0.5)' : 'none',
-              }}
-            />
-          </button>
-        </div>
-        {store.notificationsEnabled && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-3 pt-3 border-t border-white/[0.05]"
-          >
-            <div className="flex gap-2 mb-3">
-              <input
-                type="email"
-                value={notifEmailInput}
-                onChange={(e) => setNotifEmailInput(e.target.value)}
-                placeholder="your@email.com"
-                className="flex-1 rounded-lg bg-white/[0.04] border border-white/[0.08] px-3 py-1.5 text-[12px] text-white placeholder-white/30 outline-none focus:border-[#3b82f6]/40"
-              />
-              <button
-                onClick={() => store.setNotificationEmail(notifEmailInput || null)}
-                className="btn-sm !text-[11px] !py-1"
-              >
-                Save
-              </button>
-            </div>
-            <div className="flex gap-3">
-              {([
-                { type: 'breach_alert' as NotificationType, label: 'New Breaches' },
-                { type: 'dark_web' as NotificationType, label: 'Dark Web' },
-                { type: 'weekly_summary' as NotificationType, label: 'Weekly Summary' },
-              ]).map(({ type, label }) => (
-                <label key={type} className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={store.notificationTypes.includes(type)}
-                    onChange={(e) => {
-                      const types = e.target.checked
-                        ? [...store.notificationTypes, type]
-                        : store.notificationTypes.filter(t => t !== type);
-                      store.setNotificationTypes(types);
-                    }}
-                    className="accent-[#3b82f6] h-3 w-3"
-                  />
-                  <span className="text-[11px] text-white/50">{label}</span>
-                </label>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </motion.div>
-
       {/* ─── Connected Emails ─── */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
+        transition={{ delay: 0.08 }}
         className="mb-8"
       >
-        <p className="section-label mb-3">Connected Emails</p>
+        <p className="section-label mb-3">Scanning as</p>
         <div className="flex flex-wrap gap-2">
-          {store.connectedEmails.map((e) => (
-            <span key={e.email} className="glass rounded-full px-4 py-1.5 text-[13px] font-medium text-white/50 flex items-center gap-2">
-              {e.email}
-              {e.breachCount > 0 && (
-                <span className="text-[11px] font-semibold text-[#ef4444]">{e.breachCount}</span>
-              )}
-              <button
-                onClick={() => { store.removeEmail(e.email); }}
-                className="ml-1 h-4 w-4 rounded-full flex items-center justify-center text-white/45 hover:text-white/60 hover:bg-white/10 transition-all"
-                title="Disconnect email"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </span>
-          ))}
+          {store.connectedEmails.map((e) => {
+            const providerColors: Record<string, string> = {
+              gmail: '#ea4335',
+              outlook: '#0078d4',
+              yahoo: '#6001d2',
+              other: '#a78bfa',
+            };
+            const providerLabel = e.provider === 'other' ? e.email.split('@')[1] : e.provider;
+            return (
+              <span key={e.email} className="glass rounded-xl px-4 py-2.5 text-[13px] font-medium text-white/60 flex items-center gap-3">
+                <span
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                  style={{
+                    background: `${providerColors[e.provider]}15`,
+                    color: providerColors[e.provider],
+                  }}
+                >
+                  {providerLabel.slice(0, 2)}
+                </span>
+                <span className="flex flex-col">
+                  <span className="text-[13px] text-white/70">{e.email}</span>
+                  <span className="text-[10px] text-white/35 flex items-center gap-2">
+                    {providerLabel}
+                    {e.lastScanned && ` · Scanned ${new Date(e.lastScanned).toLocaleDateString()}`}
+                    {e.breachCount > 0 && (
+                      <span className="text-[#ef4444] font-semibold">{e.breachCount} breach{e.breachCount > 1 ? 'es' : ''}</span>
+                    )}
+                  </span>
+                </span>
+                <button
+                  onClick={() => { store.removeEmail(e.email); }}
+                  className="ml-auto h-5 w-5 rounded-full flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-all"
+                  title="Disconnect email"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            );
+          })}
         </div>
       </motion.div>
 
@@ -2234,6 +2131,41 @@ export default function DashboardPage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ─── Fixed bottom-left: Monitoring & Alerts ─── */}
+      <div className="fixed bottom-5 left-5 z-40 flex flex-col gap-2">
+        <button
+          onClick={() => store.setMonitoringEnabled(!store.monitoringEnabled)}
+          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl"
+          style={{
+            background: store.monitoringEnabled ? 'rgba(124,106,239,0.15)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${store.monitoringEnabled ? 'rgba(124,106,239,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            color: store.monitoringEnabled ? '#a78bfa' : 'rgba(255,255,255,0.4)',
+          }}
+        >
+          <span className="relative flex h-2 w-2">
+            {store.monitoringEnabled && (
+              <span className="absolute inset-0 rounded-full bg-[#a78bfa] animate-ping opacity-40" />
+            )}
+            <span className={`relative inline-flex h-2 w-2 rounded-full ${store.monitoringEnabled ? 'bg-[#a78bfa]' : 'bg-white/20'}`} />
+          </span>
+          {store.monitoringEnabled ? 'Monitoring On' : 'Monitoring Off'}
+        </button>
+        <button
+          onClick={() => store.setNotificationsEnabled(!store.notificationsEnabled)}
+          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl"
+          style={{
+            background: store.notificationsEnabled ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
+            border: `1px solid ${store.notificationsEnabled ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
+            color: store.notificationsEnabled ? '#3b82f6' : 'rgba(255,255,255,0.4)',
+          }}
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          {store.notificationsEnabled ? 'Alerts On' : 'Alerts Off'}
+        </button>
+      </div>
 
       {/* ─── Modals ─── */}
       <PasswordChecker open={passwordCheckerOpen} onClose={() => setPasswordCheckerOpen(false)} />
