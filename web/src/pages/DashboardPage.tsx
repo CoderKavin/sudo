@@ -1383,6 +1383,10 @@ export default function DashboardPage() {
               <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
                 Account Discovery scans your Gmail to find every service you've signed up for. Install the Vanish Chrome extension to get started.
               </p>
+              <a href="https://chromewebstore.google.com/detail/vanish-%E2%80%94-digital-footprin/mhgmgdfkholjidbjmbiconiabhckioac" target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-6 py-3 text-[14px] font-semibold text-white transition-all hover:brightness-110">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                Add to Chrome
+              </a>
             </motion.div>
           ) : !store.extensionConnected ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
@@ -1561,6 +1565,10 @@ export default function DashboardPage() {
               <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
                 Subscription Tracker finds recurring charges from your email receipts. Install the Vanish Chrome extension to get started.
               </p>
+              <a href="https://chromewebstore.google.com/detail/vanish-%E2%80%94-digital-footprin/mhgmgdfkholjidbjmbiconiabhckioac" target="_blank" rel="noopener noreferrer" className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[var(--accent)] px-6 py-3 text-[14px] font-semibold text-white transition-all hover:brightness-110">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+                Add to Chrome
+              </a>
             </motion.div>
           ) : !store.extensionConnected ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
