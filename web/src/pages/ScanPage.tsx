@@ -47,6 +47,8 @@ export default function ScanPage() {
     setStep('scanning');
     let allBreaches = store.breaches;
     let allBrokers = store.dataBrokers;
+    let allAccounts = store.discoveredAccounts;
+    let allSubs = store.trackedSubscriptions;
     let lastScore = 0;
     for (const emailEntry of localEmails) {
       setCurrentScanEmail(emailEntry.email);
@@ -58,6 +60,8 @@ export default function ScanPage() {
       });
       allBreaches = [...allBreaches, ...results.breaches];
       allBrokers = [...allBrokers, ...results.dataBrokers];
+      allAccounts = [...allAccounts, ...results.discoveredAccounts];
+      allSubs = [...allSubs, ...results.trackedSubscriptions];
       lastScore = results.privacyScore;
       emailEntry.breachCount = results.breaches.length;
       emailEntry.lastScanned = new Date().toISOString();
@@ -65,6 +69,8 @@ export default function ScanPage() {
     }
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
+    store.setDiscoveredAccounts(allAccounts);
+    store.setTrackedSubscriptions(allSubs);
     const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
     store.addScoreSnapshot({
       date: new Date().toISOString(),
@@ -242,89 +248,38 @@ export default function ScanPage() {
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="text-center"
             >
-              {/* Radar scanner */}
-              <div className="relative mx-auto mb-10 h-44 w-44">
-                {/* Concentric rings */}
-                {[1, 0.75, 0.5, 0.25].map((scale, i) => (
-                  <motion.div
-                    key={i}
-                    className="absolute inset-0 rounded-full border border-[var(--accent)]"
-                    style={{
-                      transform: `scale(${scale})`,
-                      opacity: 0.08 + i * 0.03,
-                    }}
+              {/* Progress ring */}
+              <div className="relative mx-auto mb-10 h-32 w-32">
+                {/* Background ring */}
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="42" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                  <motion.circle
+                    cx="50" cy="50" r="42" fill="none"
+                    stroke="url(#progressGrad)"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 42}
+                    strokeDashoffset={2 * Math.PI * 42 * (1 - scanProgress / 100)}
+                    style={{ transition: 'stroke-dashoffset 0.4s ease' }}
                   />
-                ))}
-
-                {/* Rotating sweep */}
-                <motion.div
-                  className="absolute inset-0"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
-                >
-                  <div
-                    className="absolute top-1/2 left-1/2 h-1/2 w-1/2 origin-top-left"
-                    style={{
-                      background: 'conic-gradient(from 0deg, transparent 0deg, rgba(124,106,239,0.25) 40deg, transparent 80deg)',
-                      borderRadius: '0 0 100% 0',
-                    }}
-                  />
-                </motion.div>
-
-                {/* Pulse rings */}
-                <motion.div
-                  className="absolute inset-0 rounded-full border border-[var(--accent)]"
-                  animate={{ scale: [0.3, 1.1], opacity: [0.4, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-                />
-                <motion.div
-                  className="absolute inset-0 rounded-full border border-[var(--accent)]"
-                  animate={{ scale: [0.3, 1.1], opacity: [0.4, 0] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 1 }}
-                />
-
-                {/* Simulated blips */}
-                {scanProgress > 20 && (
-                  <motion.div
-                    className="absolute h-2 w-2 rounded-full bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                    style={{ top: '28%', left: '62%' }}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
-                    transition={{ duration: 0.4 }}
-                  />
-                )}
-                {scanProgress > 45 && (
-                  <motion.div
-                    className="absolute h-2 w-2 rounded-full bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.6)]"
-                    style={{ top: '55%', left: '35%' }}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
-                    transition={{ duration: 0.4 }}
-                  />
-                )}
-                {scanProgress > 65 && (
-                  <motion.div
-                    className="absolute h-2 w-2 rounded-full bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                    style={{ top: '40%', left: '25%' }}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
-                    transition={{ duration: 0.4 }}
-                  />
-                )}
-                {scanProgress > 80 && (
-                  <motion.div
-                    className="absolute h-1.5 w-1.5 rounded-full bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.6)]"
-                    style={{ top: '68%', left: '60%' }}
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
-                    transition={{ duration: 0.4 }}
-                  />
-                )}
-
-                {/* Center dot */}
+                  <defs>
+                    <linearGradient id="progressGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="var(--accent)" />
+                      <stop offset="100%" stopColor="#a78bfa" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+                {/* Center percentage */}
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="h-3 w-3 rounded-full bg-[var(--accent)] shadow-[0_0_12px_rgba(124,106,239,0.5)]" />
+                  <span className="text-[1.5rem] font-bold tabular-nums text-white/80">{scanProgress}%</span>
                 </div>
+                {/* Subtle glow pulse */}
+                <motion.div
+                  className="absolute inset-0 rounded-full"
+                  style={{ boxShadow: '0 0 30px rgba(124,106,239,0.15)' }}
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                />
               </div>
 
               <h1 className="text-[2rem] font-bold tracking-tight text-white">Scanning...</h1>

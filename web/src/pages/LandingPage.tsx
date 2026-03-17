@@ -1210,7 +1210,7 @@ export default function LandingPage() {
         </section>
 
         {/* ─── CTA ─── */}
-        <section className="mx-auto max-w-6xl px-6 py-32">
+        <section className="mx-auto max-w-6xl px-6 py-20">
           <motion.div
             initial={{ opacity: 0, y: 60, scale: 0.95 }}
             whileInView={{ opacity: 1, y: 0, scale: 1 }}
@@ -1261,7 +1261,7 @@ export default function LandingPage() {
                     Scan My Email Free
                   </button>
                 </motion.div>
-                <p className="mt-5 text-[12px] text-white/15">
+                <p className="mt-5 text-[12px] text-white/40">
                   Takes less than 30 seconds. We literally can't see your results.
                 </p>
               </div>
@@ -1272,8 +1272,8 @@ export default function LandingPage() {
         {/* ─── Footer ─── */}
         <footer className="border-t border-white/[0.04]">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
-            <span className="text-[14px] font-bold text-white/15">Vanish</span>
-            <p className="text-[12px] text-white/15">Your data. Your control. Always.</p>
+            <span className="text-[14px] font-bold text-white/30">Vanish</span>
+            <p className="text-[12px] text-white/30">Your data. Your control. Always.</p>
           </div>
         </footer>
       </motion.div>

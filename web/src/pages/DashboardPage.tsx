@@ -260,6 +260,11 @@ export default function DashboardPage() {
     store.addEmail(emailEntry);
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
+    // Merge discovered accounts & subscriptions from scan
+    const allAccounts = [...store.discoveredAccounts, ...results.discoveredAccounts];
+    const allSubs = [...store.trackedSubscriptions, ...results.trackedSubscriptions];
+    store.setDiscoveredAccounts(allAccounts);
+    store.setTrackedSubscriptions(allSubs);
     const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
     store.addScoreSnapshot({
       date: new Date().toISOString(),
@@ -1302,84 +1307,23 @@ export default function DashboardPage() {
       {/* ─── Accounts ─── */}
       {activeTab === 'accounts' && (
         <div>
-          {!isExtensionInstalled() ? (
+          {store.discoveredAccounts.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-                <svg className="h-7 w-7 text-white/45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-7v4h4l-5 7z" />
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+                <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
                 </svg>
               </div>
-              <h3 className="text-[17px] font-semibold text-white">Install Chrome Extension</h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                Account Discovery scans your Gmail to find every service you've signed up for. Install the Vanish Chrome extension to get started.
+              <h3 className="text-[17px] font-semibold text-white">No accounts discovered</h3>
+              <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
+                Run a scan to find accounts linked to your email.
               </p>
-            </motion.div>
-          ) : !store.extensionConnected ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-                <svg className="h-7 w-7 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-[17px] font-semibold text-white">Connect Your Gmail</h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                Sign in with Gmail to discover all accounts linked to your email.
-              </p>
-              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
-              <button className="btn-primary mt-5" onClick={handleConnectGmail}>Connect Gmail</button>
-            </motion.div>
-          ) : store.discoveredAccounts.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              {extScanning ? (
-                <>
-                  <h3 className="text-[17px] font-semibold text-white">Scanning your inbox...</h3>
-                  <p className="mx-auto mt-2 max-w-sm text-[13px] text-white/40">This may take a minute depending on inbox size.</p>
-                </>
-              ) : (
-                <>
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
-                    <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[17px] font-semibold text-white">No accounts discovered</h3>
-                  <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
-                    Connected as {store.extensionEmail}. Run a scan to find your accounts.
-                  </p>
-                </>
-              )}
-              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
-              {!extScanning && (
-                <div className="mt-5 flex items-center justify-center gap-3">
-                  <button className="btn-primary" onClick={handleExtensionScan}>Scan Inbox</button>
-                  <button className="btn-sm !text-[12px] text-white/50" onClick={handleDisconnectGmail}>Disconnect</button>
-                </div>
-              )}
-              {extScanning && (
-                <div className="mx-auto mt-6 h-1 w-48 overflow-hidden rounded-full bg-white/[0.06]">
-                  <motion.div
-                    className="h-full rounded-full bg-[var(--accent)]"
-                    animate={{ x: ['-100%', '100%'] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ width: '40%' }}
-                  />
-                </div>
-              )}
             </motion.div>
           ) : (
             <div>
               <div className="glass-card mb-5 flex items-center justify-between">
                 <div>
-                  <span className="text-[13px] text-white/50">Connected as </span>
-                  <span className="text-[13px] font-medium text-white/60">{store.extensionEmail}</span>
-                  <span className="ml-3 text-[13px] text-white/45">·</span>
-                  <span className="ml-3 text-[13px] text-white/50">{store.discoveredAccounts.length} accounts found</span>
-                </div>
-                <div className="flex gap-2">
-                  <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
-                    {extScanning ? 'Scanning...' : 'Rescan'}
-                  </button>
-                  <button className="btn-sm !text-[12px] text-white/50" onClick={handleDisconnectGmail}>Disconnect</button>
+                  <span className="text-[13px] text-white/50">{store.discoveredAccounts.length} accounts found</span>
                 </div>
               </div>
 
@@ -1480,55 +1424,17 @@ export default function DashboardPage() {
       {/* ─── Subscriptions ─── */}
       {activeTab === 'subscriptions' && (
         <div>
-          {!isExtensionInstalled() ? (
+          {store.trackedSubscriptions.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-                <svg className="h-7 w-7 text-white/45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15v-4H7l5-7v4h4l-5 7z" />
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+                <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
                 </svg>
               </div>
-              <h3 className="text-[17px] font-semibold text-white">Install Chrome Extension</h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                Subscription Tracker finds recurring charges from your email receipts. Install the Vanish Chrome extension to get started.
+              <h3 className="text-[17px] font-semibold text-white">No subscriptions found</h3>
+              <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
+                Run a scan to discover your recurring charges.
               </p>
-            </motion.div>
-          ) : !store.extensionConnected ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl glass">
-                <svg className="h-7 w-7 text-[var(--accent)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="text-[17px] font-semibold text-white">Connect Your Gmail</h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                Sign in with Gmail to track your subscriptions and recurring charges.
-              </p>
-              {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
-              <button className="btn-primary mt-5" onClick={handleConnectGmail}>Connect Gmail</button>
-            </motion.div>
-          ) : store.trackedSubscriptions.length === 0 ? (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              {extScanning ? (
-                <>
-                  <h3 className="text-[17px] font-semibold text-white">Scanning for subscriptions...</h3>
-                  <p className="mx-auto mt-2 max-w-sm text-[13px] text-white/40">Analyzing billing emails from the past year.</p>
-                </>
-              ) : (
-                <>
-                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
-                    <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-[17px] font-semibold text-white">No subscriptions found</h3>
-                  <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
-                    Connect the Chrome extension and scan your inbox to discover recurring charges.
-                  </p>
-                </>
-              )}
-              {!extScanning && (
-                <button className="btn-primary mt-5" onClick={handleExtensionScan}>Scan Inbox</button>
-              )}
             </motion.div>
           ) : (
             <div>
@@ -1555,9 +1461,6 @@ export default function DashboardPage() {
                           {failedCount > 0 && <span className="text-[#f97316]">{failedCount} failed</span>}
                         </div>
                       </div>
-                      <button className="btn-sm !text-[12px]" onClick={handleExtensionScan} disabled={extScanning}>
-                        {extScanning ? 'Scanning...' : 'Rescan'}
-                      </button>
                     </div>
                   </div>
                 );
@@ -2602,14 +2505,14 @@ export default function DashboardPage() {
       {/* ─── Fixed bottom-left: Settings gear ─── */}
       <button
         onClick={() => setSettingsOpen(true)}
-        className="fixed bottom-5 left-5 z-40 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-xl cursor-pointer transition-all duration-200 hover:bg-white/[0.08]"
+        className="fixed bottom-5 left-5 z-40 flex h-12 w-12 items-center justify-center rounded-full backdrop-blur-xl cursor-pointer transition-all duration-200 hover:bg-white/[0.08]"
         style={{
           background: 'rgba(255,255,255,0.04)',
           border: '1px solid rgba(255,255,255,0.08)',
         }}
         title="Settings"
       >
-        <svg className="h-4.5 w-4.5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="h-5 w-5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.007.38.138.75.43.99l1.004.828c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.38-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
         </svg>
@@ -2626,7 +2529,7 @@ export default function DashboardPage() {
           >
             <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSettingsOpen(false)} />
             <motion.div
-              className="relative w-full max-w-sm rounded-2xl p-6"
+              className="relative w-full max-w-md rounded-2xl p-8"
               style={{
                 background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(18,18,24,0.98))',
                 border: '1px solid rgba(255,255,255,0.08)',
