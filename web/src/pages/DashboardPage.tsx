@@ -136,12 +136,25 @@ export default function DashboardPage() {
     setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  // Load extension data on mount
+  // Load extension data on mount — also clean up stale state if extension was removed
   useEffect(() => {
-    if (!isExtensionInstalled()) return;
+    if (!isExtensionInstalled()) {
+      // Extension was previously connected but is now gone — clear stale state
+      if (store.extensionConnected) {
+        store.setExtensionConnected(false, null);
+        store.setDiscoveredAccounts([]);
+        store.setTrackedSubscriptions([]);
+      }
+      return;
+    }
     getExtensionData().then((data) => {
       if (data.vanish_connected) {
         store.setExtensionConnected(true, data.vanish_email ?? null);
+      } else if (store.extensionConnected) {
+        // Extension says not connected but store thinks it is — user disconnected externally
+        store.setExtensionConnected(false, null);
+        store.setDiscoveredAccounts([]);
+        store.setTrackedSubscriptions([]);
       }
       if (data.vanish_accounts) store.setDiscoveredAccounts(data.vanish_accounts);
       if (data.vanish_subscriptions) store.setTrackedSubscriptions(data.vanish_subscriptions);
@@ -149,16 +162,20 @@ export default function DashboardPage() {
   }, []);
 
   const handleConnectGmail = useCallback(async () => {
+    if (!isExtensionInstalled()) {
+      setExtError('Vanish Chrome extension not detected. Install it first.');
+      return;
+    }
     setExtError(null);
     try {
       const res = await connectGmail();
       if (res.ok && res.email) {
         store.setExtensionConnected(true, res.email);
       } else {
-        setExtError(res.error ?? 'Failed to connect');
+        setExtError(res.error ?? 'Failed to connect — try again');
       }
     } catch {
-      setExtError('Extension not responding');
+      setExtError('Extension not responding. Make sure it is installed and enabled.');
     }
   }, []);
 
@@ -167,22 +184,26 @@ export default function DashboardPage() {
       setExtError('Vanish Chrome extension not detected. Install it to scan your inbox.');
       return;
     }
+    if (!store.extensionConnected) {
+      setExtError('Connect your Gmail first before scanning.');
+      return;
+    }
     setExtScanning(true);
     setExtError(null);
     try {
       const res = await runExtensionScan();
       if (res.ok) {
-        if (res.accounts) store.setDiscoveredAccounts(res.accounts);
-        if (res.subscriptions) store.setTrackedSubscriptions(res.subscriptions);
+        store.setDiscoveredAccounts(res.accounts ?? []);
+        store.setTrackedSubscriptions(res.subscriptions ?? []);
       } else {
-        setExtError(res.error ?? 'Scan failed');
+        setExtError(res.error ?? 'Scan failed — try again');
       }
     } catch {
       setExtError('Extension not responding. Make sure the Vanish extension is installed and enabled.');
     } finally {
       setExtScanning(false);
     }
-  }, []);
+  }, [store.extensionConnected]);
 
   const handleDisconnectGmail = useCallback(async () => {
     await disconnectGmail().catch(() => {});
@@ -1344,7 +1365,7 @@ export default function DashboardPage() {
                   </div>
                   <h3 className="text-[17px] font-semibold text-white">No accounts discovered</h3>
                   <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
-                    Connected as {store.extensionEmail}. Run a scan to find your accounts.
+                    Connected as {store.extensionEmail ?? 'your account'}. Run a scan to find your accounts.
                   </p>
                 </>
               )}
@@ -1371,7 +1392,7 @@ export default function DashboardPage() {
               <div className="glass-card mb-5 flex items-center justify-between">
                 <div>
                   <span className="text-[13px] text-white/50">Connected as </span>
-                  <span className="text-[13px] font-medium text-white/60">{store.extensionEmail}</span>
+                  <span className="text-[13px] font-medium text-white/60">{store.extensionEmail ?? 'Unknown'}</span>
                   <span className="ml-3 text-[13px] text-white/45">·</span>
                   <span className="ml-3 text-[13px] text-white/50">{store.discoveredAccounts.length} accounts found</span>
                 </div>
