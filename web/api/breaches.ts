@@ -52,17 +52,17 @@ export default async function handler(request: Request) {
 
     return json({ breaches, source: 'xposedornot' });
   } catch {
-    // Network error / timeout — client will fall back to mock data
-    return json({ breaches: [], source: 'error' });
+    // Network error / timeout
+    return json({ breaches: [], source: 'error' }, 200, false);
   }
 }
 
-function json(data: unknown, status = 200) {
+function json(data: unknown, status = 200, cache = true) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       'Content-Type': 'application/json',
-      'Cache-Control': 'public, max-age=3600', // cache 1hr per email
+      'Cache-Control': cache ? 'public, max-age=3600' : 'no-store',
     },
   });
 }

@@ -1,16 +1,9 @@
 // ============================================================
 // Dark web monitoring — checks for leaked credentials
-// Uses XposedOrNot breach analytics API for dark web exposure data
+// Proxies through /api/dark-web to avoid CORS issues
 // ============================================================
 
 import type { DarkWebAlert } from '../store/useStore';
-
-interface XposedMetrics {
-  breaches_account: number;
-  breaches_account_details: string;
-  pastes_count: number;
-  industry: string[];
-}
 
 const ALERT_TYPE_MAP: Record<string, DarkWebAlert['type']> = {
   passwords: 'credentials',
@@ -37,66 +30,66 @@ function inferAlertType(dataTypes: string[]): DarkWebAlert['type'] {
   return 'personal_info';
 }
 
-function inferSeverity(pasteCount: number, breachCount: number): DarkWebAlert['severity'] {
-  if (pasteCount > 5 || breachCount > 10) return 'critical';
-  if (pasteCount > 2 || breachCount > 5) return 'high';
-  if (pasteCount > 0 || breachCount > 2) return 'medium';
+function inferSeverity(
+  dataTypes: string[],
+  records: number,
+  pasteCount: number,
+): DarkWebAlert['severity'] {
+  const lower = dataTypes.map(d => d.toLowerCase()).join(' ');
+  const hasSensitive = /password|credit.?card|ssn|social.?security|financial|bank/i.test(lower);
+
+  if (hasSensitive && (records > 50_000_000 || pasteCount > 5)) return 'critical';
+  if (hasSensitive || pasteCount > 2 || records > 10_000_000) return 'high';
+  if (records > 1_000_000 || pasteCount > 0) return 'medium';
   return 'low';
 }
 
 /**
- * Check dark web exposure for a single email using XposedOrNot analytics
+ * Check dark web exposure for a single email via our proxy
  */
 async function checkEmailExposure(email: string): Promise<DarkWebAlert[]> {
   const alerts: DarkWebAlert[] = [];
 
   try {
-    // XposedOrNot breach analytics endpoint
     const res = await fetch(
-      `https://api.xposedornot.com/v1/breach-analytics?email=${encodeURIComponent(email)}`,
+      `/api/dark-web?email=${encodeURIComponent(email)}`,
       { signal: AbortSignal.timeout(15000) },
     );
 
-    if (!res.ok) {
-      // 404 = no breaches found (clean email)
-      if (res.status === 404) return [];
-      return [];
-    }
+    if (!res.ok) return [];
 
     const data = await res.json();
+    if (data.source === 'error') return [];
 
-    // Parse breach details from the analytics response
-    const exposedBreaches = data.ExposedBreaches?.breaches_details || [];
-    const pasteMetrics = data.PastesSummary;
+    const exposedBreaches = data.breaches_details || [];
+    const pasteMetrics = data.pastes;
+    const pasteCount = typeof pasteMetrics?.cnt === 'number' ? pasteMetrics.cnt : 0;
 
-    // Create alerts from breach details
     for (const breach of exposedBreaches) {
       const dataTypes = (breach.xposed_data || '').split(';').map((s: string) => s.trim()).filter(Boolean);
-      const alertType = inferAlertType(dataTypes);
-      const pasteCount = typeof pasteMetrics?.cnt === 'number' ? pasteMetrics.cnt : 0;
+      const records = typeof breach.xposed_records === 'number' ? breach.xposed_records : 0;
 
       alerts.push({
         id: `darkweb-${email}-${breach.breach}`.replace(/\s+/g, '-').toLowerCase(),
         email,
-        type: alertType,
+        type: inferAlertType(dataTypes),
         source: breach.breach || 'Unknown source',
         description: buildDescription(breach, dataTypes),
         date: breach.xposed_date || new Date().toISOString(),
-        severity: inferSeverity(pasteCount, exposedBreaches.length),
+        severity: inferSeverity(dataTypes, records, pasteCount),
         resolved: false,
       });
     }
 
-    // If pastes were found, add a separate alert
-    if (pasteMetrics && typeof pasteMetrics.cnt === 'number' && pasteMetrics.cnt > 0) {
+    if (pasteCount > 0) {
       alerts.push({
         id: `darkweb-paste-${email}`,
         email,
         type: 'credentials',
         source: 'Paste Sites',
-        description: `Your email was found in ${pasteMetrics.cnt} paste(s) on dark web paste sites. These pastes often contain leaked credentials and personal data.`,
+        description: `Your email was found in ${pasteCount} paste(s) on dark web paste sites. These pastes often contain leaked credentials and personal data.`,
         date: new Date().toISOString(),
-        severity: pasteMetrics.cnt > 5 ? 'critical' : pasteMetrics.cnt > 2 ? 'high' : 'medium',
+        severity: pasteCount > 5 ? 'critical' : pasteCount > 2 ? 'high' : 'medium',
         resolved: false,
       });
     }
@@ -107,7 +100,7 @@ async function checkEmailExposure(email: string): Promise<DarkWebAlert[]> {
   return alerts;
 }
 
-function buildDescription(breach: { breach?: string; xposed_records?: number; xposed_data?: string }, dataTypes: string[]): string {
+function buildDescription(breach: { breach?: string; xposed_records?: number }, dataTypes: string[]): string {
   const name = breach.breach || 'Unknown';
   const records = breach.xposed_records;
   const recordStr = records && records > 0

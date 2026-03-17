@@ -216,11 +216,13 @@ export const useStore = create<VanishState>()(
         }),
 
       markBrokerRemoving: (brokerId) =>
-        set((state) => ({
-          dataBrokers: state.dataBrokers.map((b) =>
+        set((state) => {
+          const dataBrokers = state.dataBrokers.map((b) =>
             b.id === brokerId ? { ...b, status: 'removing' as const } : b,
-          ),
-        })),
+          );
+          const breakdown = calculateScoreBreakdown(state.breaches, dataBrokers);
+          return { dataBrokers, privacyScore: breakdown.total, scoreBreakdown: breakdown };
+        }),
 
       markBrokerRemoved: (brokerId) =>
         set((state) => {

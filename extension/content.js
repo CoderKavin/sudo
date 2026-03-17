@@ -28,8 +28,12 @@ window.addEventListener('message', async (event) => {
 });
 
 // Announce extension presence to the page
-window.postMessage({
-  direction: 'vanish-ext-to-web',
-  type: 'VANISH_EXTENSION_READY',
-  response: { version: chrome.runtime.getManifest().version },
-}, '*');
+try {
+  window.postMessage({
+    direction: 'vanish-ext-to-web',
+    type: 'VANISH_EXTENSION_READY',
+    response: { version: chrome.runtime.getManifest().version },
+  }, '*');
+} catch {
+  // Extension context invalidated (e.g., after update/reload)
+}

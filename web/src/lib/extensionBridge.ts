@@ -135,6 +135,26 @@ export async function getExtensionData(): Promise<{
 }
 
 /**
+ * Poll scan status from the extension (used for fire-and-forget scans)
+ */
+export async function getScanStatus(): Promise<{
+  vanish_scan_status?: 'scanning' | 'complete' | 'error';
+  vanish_scan_progress?: string;
+  vanish_scan_error?: string;
+  vanish_accounts?: DiscoveredAccount[];
+  vanish_subscriptions?: TrackedSubscription[];
+}> {
+  const res = await sendToExtension('VANISH_SCAN_STATUS');
+  return res as {
+    vanish_scan_status?: 'scanning' | 'complete' | 'error';
+    vanish_scan_progress?: string;
+    vanish_scan_error?: string;
+    vanish_accounts?: DiscoveredAccount[];
+    vanish_subscriptions?: TrackedSubscription[];
+  };
+}
+
+/**
  * Disconnect Gmail via the extension
  */
 export async function disconnectGmail(): Promise<void> {

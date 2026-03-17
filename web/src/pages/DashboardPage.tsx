@@ -35,6 +35,7 @@ import {
   connectGmail,
   runExtensionScan,
   getExtensionData,
+  getScanStatus,
   disconnectGmail,
 } from '../lib/extensionBridge';
 import { scanDarkWeb } from '../lib/darkWebMonitor';
@@ -96,6 +97,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const store = useStore();
   useMonitoring();
+  const extPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('breaches');
   const [search, setSearch] = useState('');
   const [expandedBreach, setExpandedBreach] = useState<string | null>(null);
@@ -134,6 +136,13 @@ export default function DashboardPage() {
     await copyToClipboard(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
+  }, []);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (extPollRef.current) clearInterval(extPollRef.current);
+    };
   }, []);
 
   // Load extension data on mount — also clean up stale state if extension was removed
@@ -191,13 +200,39 @@ export default function DashboardPage() {
     setExtScanning(true);
     setExtError(null);
     try {
-      const res = await runExtensionScan();
-      if (res.ok) {
-        store.setDiscoveredAccounts(res.accounts ?? []);
-        store.setTrackedSubscriptions(res.subscriptions ?? []);
-      } else {
-        setExtError(res.error ?? 'Scan failed — try again');
+      // Fire-and-forget: service worker starts scan in background
+      const startRes = await runExtensionScan();
+      if (!startRes.ok) {
+        setExtError(startRes.error ?? 'Scan failed — try again');
+        setExtScanning(false);
+        return;
       }
+      // Poll for completion (with cleanup ref so unmount stops it)
+      await new Promise<void>((resolve) => {
+        const interval = setInterval(async () => {
+          try {
+            const status = await getScanStatus();
+            if (status.vanish_scan_status === 'complete') {
+              clearInterval(interval);
+              extPollRef.current = null;
+              store.setDiscoveredAccounts(status.vanish_accounts ?? []);
+              store.setTrackedSubscriptions(status.vanish_subscriptions ?? []);
+              resolve();
+            } else if (status.vanish_scan_status === 'error') {
+              clearInterval(interval);
+              extPollRef.current = null;
+              setExtError(status.vanish_scan_error ?? 'Scan failed');
+              resolve();
+            }
+          } catch {
+            clearInterval(interval);
+            extPollRef.current = null;
+            setExtError('Lost connection to extension');
+            resolve();
+          }
+        }, 1000);
+        extPollRef.current = interval;
+      });
     } catch {
       setExtError('Extension not responding. Make sure the Vanish extension is installed and enabled.');
     } finally {
@@ -269,16 +304,19 @@ export default function DashboardPage() {
     setAddEmailStage('Connecting...');
     setAddEmailDone(false);
 
+    try {
     const results = await simulateScan(email, (p, stage) => {
       setAddEmailProgress(p);
       setAddEmailStage(stage);
     });
 
-    const allBreaches = [...store.breaches, ...results.breaches];
-    const allBrokers = [...store.dataBrokers, ...results.dataBrokers];
-    emailEntry.breachCount = results.breaches.length;
-    emailEntry.lastScanned = new Date().toISOString();
-    store.addEmail(emailEntry);
+    // Deduplicate by ID before merging
+    const existingBreachIds = new Set(store.breaches.map(b => b.id));
+    const existingBrokerIds = new Set(store.dataBrokers.map(b => b.id));
+    const allBreaches = [...store.breaches, ...results.breaches.filter(b => !existingBreachIds.has(b.id))];
+    const allBrokers = [...store.dataBrokers, ...results.dataBrokers.filter(b => !existingBrokerIds.has(b.id))];
+    const updatedEntry: ConnectedEmail = { ...emailEntry, breachCount: results.breaches.length, lastScanned: new Date().toISOString() };
+    store.addEmail(updatedEntry);
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
     const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
@@ -289,8 +327,12 @@ export default function DashboardPage() {
       brokerCount: allBrokers.length,
     });
 
-    setAddEmailScanning(false);
     setAddEmailDone(true);
+    } catch {
+      setAddEmailStage('Scan failed — try again');
+    } finally {
+      setAddEmailScanning(false);
+    }
   }, [addEmailInput, store]);
 
   const closeAddEmail = useCallback(() => {
@@ -378,7 +420,7 @@ export default function DashboardPage() {
     store.markBrokerRemoving(brokerId);
     window.open(
       `mailto:privacy@${broker.name.toLowerCase().replace(/\s+/g, '')}.com?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`,
-      '_self',
+      '_blank',
     );
   };
 
@@ -395,7 +437,7 @@ export default function DashboardPage() {
       if (idx === 0) {
         window.open(
           `mailto:privacy@${broker.name.toLowerCase().replace(/\s+/g, '')}.com?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`,
-          '_self',
+          '_blank',
         );
       }
 
@@ -723,12 +765,12 @@ export default function DashboardPage() {
       {(() => {
         const filterChips: { key: string | null; label: string; count: number }[] =
           activeTab === 'breaches' ? [
-            { key: null, label: 'All', count: store.breaches.length },
+            { key: null, label: 'All', count: scopedBreaches.length },
             { key: 'unresolved', label: 'Unresolved', count: unresolvedBreaches },
-            { key: 'resolved', label: 'Resolved', count: store.breaches.length - unresolvedBreaches },
+            { key: 'resolved', label: 'Resolved', count: scopedBreaches.length - unresolvedBreaches },
           ]
           : activeTab === 'brokers' ? [
-            { key: null, label: 'All', count: store.dataBrokers.length },
+            { key: null, label: 'All', count: scopedBrokers.length },
             { key: 'found', label: 'Exposed', count: exposedBrokers },
             { key: 'removing', label: 'Removing', count: removingBrokers },
             { key: 'removed', label: 'Removed', count: removedBrokers },
@@ -1196,6 +1238,8 @@ export default function DashboardPage() {
             {filteredBrokers.map((broker, i) => {
               const riskLevel = broker.dataTypes.length >= 5 ? 'High' : broker.dataTypes.length >= 3 ? 'Medium' : 'Low';
               const riskColor = riskLevel === 'High' ? '#ef4444' : riskLevel === 'Medium' ? '#f97316' : '#eab308';
+              const conf = broker.confidence ?? 'possible';
+              const confColor = conf === 'confirmed' ? '#ef4444' : conf === 'likely' ? '#f97316' : '#eab308';
               return (
               <motion.div
                 key={broker.id}
@@ -1220,6 +1264,11 @@ export default function DashboardPage() {
                   <p className="text-[12px] text-white/45">{broker.email}</p>
                   <span className="text-[11px] text-white/40">·</span>
                   <p className="text-[11px] text-white/50">{broker.dataTypes.length} data types exposed</p>
+                  {broker.status === 'found' && (
+                    <span className="rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider" style={{ background: `${confColor}12`, color: confColor, border: `1px solid ${confColor}20` }}>
+                      {conf}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {broker.dataTypes.map((dt) => (
@@ -1301,7 +1350,7 @@ export default function DashboardPage() {
                             <button
                               className="btn-sm !text-[11px]"
                               onClick={() => {
-                                window.open(`mailto:privacy@${broker.name.toLowerCase().replace(/\s+/g, '')}.com?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self');
+                                window.open(`mailto:privacy@${broker.name.toLowerCase().replace(/\s+/g, '')}.com?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_blank');
                                 store.markBrokerRemoving(broker.id);
                               }}
                             >
@@ -1473,7 +1522,7 @@ export default function DashboardPage() {
                                   </button>
                                   <button
                                     className="btn-sm !py-1 !px-2 !text-[10px]"
-                                    onClick={() => window.open(`mailto:support@${account.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self')}
+                                    onClick={() => window.open(`mailto:support@${account.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_blank')}
                                   >
                                     Send
                                   </button>
@@ -1713,7 +1762,7 @@ export default function DashboardPage() {
                                   </button>
                                   <button
                                     className="btn-sm !py-1 !px-2.5 !text-[10px]"
-                                    onClick={() => window.open(`mailto:support@${sub.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_self')}
+                                    onClick={() => window.open(`mailto:support@${sub.domain}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`, '_blank')}
                                   >
                                     Open in Mail
                                   </button>

@@ -156,7 +156,7 @@ $('#btn-disconnect').addEventListener('click', async () => {
 });
 
 $('#btn-open-dashboard').addEventListener('click', () => {
-  chrome.tabs.create({ url: 'http://localhost:5173/dashboard' });
+  chrome.tabs.create({ url: 'https://sudo-wheat.vercel.app/dashboard' });
 });
 
 // Listen for live progress messages from service worker

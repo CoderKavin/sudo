@@ -1273,7 +1273,11 @@ export default function LandingPage() {
         <footer className="border-t border-white/[0.04]">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-8">
             <span className="text-[14px] font-bold text-white/30">Vanish</span>
-            <p className="text-[12px] text-white/30">Your data. Your control. Always.</p>
+            <div className="flex items-center gap-4">
+              <a href="/privacy.html" className="text-[12px] text-white/30 hover:text-white/50 transition-colors">Privacy Policy</a>
+              <span className="text-white/10">·</span>
+              <p className="text-[12px] text-white/30">Your data. Your control. Always.</p>
+            </div>
           </div>
         </footer>
       </motion.div>

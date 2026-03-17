@@ -45,9 +45,9 @@ export default function ScanPage() {
   const startScan = useCallback(async () => {
     if (localEmails.length === 0) return;
     setStep('scanning');
-    let allBreaches = store.breaches;
-    let allBrokers = store.dataBrokers;
-    let lastScore = 0;
+    try {
+    let allBreaches = [...store.breaches];
+    let allBrokers = [...store.dataBrokers];
     for (const emailEntry of localEmails) {
       setCurrentScanEmail(emailEntry.email);
       setScanProgress(0);
@@ -56,12 +56,14 @@ export default function ScanPage() {
         setScanProgress(p);
         setScanStage(stage);
       });
-      allBreaches = [...allBreaches, ...results.breaches];
-      allBrokers = [...allBrokers, ...results.dataBrokers];
-      lastScore = results.privacyScore;
-      emailEntry.breachCount = results.breaches.length;
-      emailEntry.lastScanned = new Date().toISOString();
-      store.addEmail(emailEntry);
+      // Deduplicate by ID
+      const existingBreachIds = new Set(allBreaches.map(b => b.id));
+      const existingBrokerIds = new Set(allBrokers.map(b => b.id));
+      allBreaches = [...allBreaches, ...results.breaches.filter(b => !existingBreachIds.has(b.id))];
+      allBrokers = [...allBrokers, ...results.dataBrokers.filter(b => !existingBrokerIds.has(b.id))];
+      // Don't mutate the original — create a new object
+      const updatedEntry = { ...emailEntry, breachCount: results.breaches.length, lastScanned: new Date().toISOString() };
+      store.addEmail(updatedEntry);
     }
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
@@ -75,6 +77,11 @@ export default function ScanPage() {
     store.setScanComplete();
     setSummaryStats({ breaches: allBreaches.length, brokers: allBrokers.length, privacyScore: finalBreakdown.total });
     setStep('complete');
+    } catch {
+      setScanStage('Scan failed — please try again');
+      setScanProgress(0);
+      setTimeout(() => setStep('connect'), 3000);
+    }
   }, [localEmails, store]);
 
   const scoreColor = summaryStats.privacyScore > 70 ? '#22c55e'

@@ -333,7 +333,8 @@ export const DATA_BROKERS: DataBrokerEntry[] = [
 export const SCAN_STAGES: { message: string; progressEnd: number }[] = [
   { message: 'Connecting...', progressEnd: 8 },
   { message: 'Checking breach databases...', progressEnd: 35 },
-  { message: 'Cross-referencing known breaches...', progressEnd: 60 },
-  { message: 'Scanning data brokers...', progressEnd: 85 },
+  { message: 'Cross-referencing known breaches...', progressEnd: 55 },
+  { message: 'Analyzing data broker exposure...', progressEnd: 80 },
+  { message: 'Running live broker checks...', progressEnd: 92 },
   { message: 'Calculating privacy score...', progressEnd: 100 },
 ];

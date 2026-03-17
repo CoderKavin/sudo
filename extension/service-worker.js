@@ -25,7 +25,14 @@ function handleMessage(message, sendResponse) {
 
   // Fire-and-forget scan: starts in background, responds immediately
   if (message.type === 'VANISH_SCAN') {
-    sendResponse({ ok: true, started: true });
+    // Guard against concurrent scans
+    chrome.storage.local.get('vanish_scan_status', (data) => {
+      if (data.vanish_scan_status === 'scanning') {
+        sendResponse({ ok: true, started: false, reason: 'already_scanning' });
+        return;
+      }
+      sendResponse({ ok: true, started: true });
+    });
     // Run scan in background — results go to chrome.storage
     handleScan().catch((e) => {
       console.error('[Vanish] Scan error:', e);

@@ -409,7 +409,8 @@ export async function generatePrivacyReport(data: ReportData): Promise<void> {
     doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...C.muted);
     doc.text('BROKER', m + 5, y + 5.5);
-    doc.text('DATA EXPOSED', m + 65, y + 5.5);
+    doc.text('DATA EXPOSED', m + 55, y + 5.5);
+    doc.text('CONFIDENCE', m + cw - 35, y + 5.5);
     doc.text('RISK', m + cw - 15, y + 5.5);
     y += 10;
 
@@ -428,7 +429,12 @@ export async function generatePrivacyReport(data: ReportData): Promise<void> {
       doc.setFontSize(6.5);
       doc.setFont(fontFamily, 'normal');
       doc.setTextColor(...C.muted);
-      doc.text(broker.dataTypes.slice(0, 4).join(', '), m + 65, y + 6, { maxWidth: cw - 90 });
+      doc.text(broker.dataTypes.slice(0, 3).join(', '), m + 55, y + 6, { maxWidth: cw - 100 });
+
+      // Confidence level
+      const conf = broker.confidence ?? 'possible';
+      const confColor = conf === 'confirmed' ? C.red : conf === 'likely' ? C.orange : [234, 179, 8] as [number, number, number];
+      drawPill(m + cw - 38, y + 4, conf.toUpperCase(), confColor);
 
       // Risk level
       const risk = broker.dataTypes.length > 5 ? 'HIGH' : broker.dataTypes.length > 3 ? 'MED' : 'LOW';

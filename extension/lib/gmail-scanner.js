@@ -46,6 +46,7 @@ export async function getUserEmail(token) {
 async function searchMessages(token, query, maxResults = 200) {
   const ids = [];
   let pageToken = null;
+  let currentToken = token;
 
   while (ids.length < maxResults) {
     const params = new URLSearchParams({
@@ -56,8 +57,26 @@ async function searchMessages(token, query, maxResults = 200) {
 
     const res = await fetch(
       `https://www.googleapis.com/gmail/v1/users/me/messages?${params}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${currentToken}` } }
     );
+
+    // Handle token expiry — refresh once and retry
+    if (res.status === 401) {
+      await removeCachedToken(currentToken);
+      currentToken = await getAuthToken(false);
+      const retry = await fetch(
+        `https://www.googleapis.com/gmail/v1/users/me/messages?${params}`,
+        { headers: { Authorization: `Bearer ${currentToken}` } }
+      );
+      if (!retry.ok) break;
+      const retryData = await retry.json();
+      if (!retryData.messages) break;
+      ids.push(...retryData.messages.map((m) => m.id));
+      pageToken = retryData.nextPageToken;
+      if (!pageToken) break;
+      continue;
+    }
+
     if (!res.ok) break;
 
     const data = await res.json();
@@ -403,9 +422,16 @@ export async function scanForSubscriptions(token, onProgress) {
     const chargeDates = charges.map((e) => e.date);
     let frequency = detectFrequency(chargeDates);
 
-    // Map quarterly/weekly to closest standard for the UI type
-    if (frequency === 'quarterly') frequency = 'monthly'; // close enough for display
-    if (frequency === 'weekly') frequency = 'monthly'; // treat as monthly for now
+    // Normalize frequency for UI — adjust amount proportionally
+    let displayAmount = amount;
+    if (frequency === 'quarterly') {
+      displayAmount = Math.round((amount / 3) * 100) / 100; // quarterly → monthly equivalent
+      frequency = 'monthly';
+    }
+    if (frequency === 'weekly') {
+      displayAmount = Math.round((amount * 4.33) * 100) / 100; // weekly → monthly equivalent
+      frequency = 'monthly';
+    }
 
     const lastCharge = chargeDates.length > 0
       ? new Date(chargeDates[chargeDates.length - 1]).toISOString()
@@ -448,7 +474,7 @@ export async function scanForSubscriptions(token, onProgress) {
       id: `sub-${service.domain}`,
       name: service.name,
       domain: service.domain,
-      amount,
+      amount: displayAmount,
       currency,
       frequency: frequency === 'unknown' ? 'unknown' : frequency,
       lastCharged: lastCharge,
