@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vanish — Digital Footprint Scanner",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Discover every account and subscription linked to your email. Part of the Vanish privacy suite.",
 
   "permissions": [
@@ -23,7 +23,12 @@
 
   "action": {
     "default_popup": "popup/popup.html",
-    "default_title": "Vanish"
+    "default_title": "Vanish",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
   },
 
   "content_scripts": [

@@ -1850,7 +1850,7 @@ export default function DashboardPage() {
             </svg>
 
             {/* ── Content ── */}
-            <div className="hud-glitch-in relative mx-auto max-w-7xl px-6 py-6" style={{ zIndex: 10 }}>
+            <div className="hud-glitch-in relative mx-auto max-w-7xl px-8 py-8 scale-[1.06] origin-top" style={{ zIndex: 10 }}>
 
               {/* ── Top bar ── */}
               <motion.div
