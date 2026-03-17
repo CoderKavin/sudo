@@ -228,46 +228,152 @@ export default function ScanPage() {
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="text-center"
             >
-              {/* Pulsing scanner icon */}
-              <div className="relative mx-auto mb-8 flex h-20 w-20 items-center justify-center">
-                <motion.div
-                  className="absolute inset-0 rounded-full bg-[var(--accent)]/10"
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-                <motion.div
-                  className="absolute inset-2 rounded-full bg-[var(--accent)]/10"
-                  animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0, 0.4] }}
-                  transition={{ duration: 2, repeat: Infinity, delay: 0.3 }}
-                />
-                <div className="relative flex h-12 w-12 items-center justify-center rounded-full glass-strong">
+              {/* Radar scanner */}
+              <div className="relative mx-auto mb-10 h-44 w-44">
+                {/* Concentric rings */}
+                {[1, 0.75, 0.5, 0.25].map((scale, i) => (
                   <motion.div
-                    className="h-5 w-5 rounded-full border-2 border-white/10 border-t-[var(--accent)]"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    key={i}
+                    className="absolute inset-0 rounded-full border border-[var(--accent)]"
+                    style={{
+                      transform: `scale(${scale})`,
+                      opacity: 0.08 + i * 0.03,
+                    }}
                   />
+                ))}
+
+                {/* Rotating sweep */}
+                <motion.div
+                  className="absolute inset-0"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                >
+                  <div
+                    className="absolute top-1/2 left-1/2 h-1/2 w-1/2 origin-top-left"
+                    style={{
+                      background: 'conic-gradient(from 0deg, transparent 0deg, rgba(124,106,239,0.25) 40deg, transparent 80deg)',
+                      borderRadius: '0 0 100% 0',
+                    }}
+                  />
+                </motion.div>
+
+                {/* Pulse rings */}
+                <motion.div
+                  className="absolute inset-0 rounded-full border border-[var(--accent)]"
+                  animate={{ scale: [0.3, 1.1], opacity: [0.4, 0] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+                />
+                <motion.div
+                  className="absolute inset-0 rounded-full border border-[var(--accent)]"
+                  animate={{ scale: [0.3, 1.1], opacity: [0.4, 0] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeOut', delay: 1 }}
+                />
+
+                {/* Simulated blips */}
+                {scanProgress > 20 && (
+                  <motion.div
+                    className="absolute h-2 w-2 rounded-full bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+                    style={{ top: '28%', left: '62%' }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
+                    transition={{ duration: 0.4 }}
+                  />
+                )}
+                {scanProgress > 45 && (
+                  <motion.div
+                    className="absolute h-2 w-2 rounded-full bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                    style={{ top: '55%', left: '35%' }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
+                    transition={{ duration: 0.4 }}
+                  />
+                )}
+                {scanProgress > 65 && (
+                  <motion.div
+                    className="absolute h-2 w-2 rounded-full bg-[#ef4444] shadow-[0_0_8px_rgba(239,68,68,0.6)]"
+                    style={{ top: '40%', left: '25%' }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
+                    transition={{ duration: 0.4 }}
+                  />
+                )}
+                {scanProgress > 80 && (
+                  <motion.div
+                    className="absolute h-1.5 w-1.5 rounded-full bg-[#f97316] shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                    style={{ top: '68%', left: '60%' }}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0.8] }}
+                    transition={{ duration: 0.4 }}
+                  />
+                )}
+
+                {/* Center dot */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="h-3 w-3 rounded-full bg-[var(--accent)] shadow-[0_0_12px_rgba(124,106,239,0.5)]" />
                 </div>
               </div>
 
               <h1 className="text-[2rem] font-bold tracking-tight text-white">Scanning...</h1>
               <p className="mt-2 text-[15px] text-white/55">
-                Analyzing <span className="font-medium text-white/60">{currentScanEmail}</span>
+                Analyzing <span className="font-medium text-white/70">{currentScanEmail}</span>
               </p>
 
-              <div className="mt-10">
-                <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.06]">
+              {/* Scan stages checklist */}
+              <div className="mt-8 flex flex-col items-start gap-2 mx-auto w-fit">
+                {[
+                  { label: 'Checking breach databases', threshold: 10 },
+                  { label: 'Cross-referencing dark web', threshold: 35 },
+                  { label: 'Scanning data brokers', threshold: 60 },
+                  { label: 'Calculating privacy score', threshold: 85 },
+                ].map((stage, i) => {
+                  const active = scanProgress >= stage.threshold;
+                  const done = i < 3 ? scanProgress >= [35, 60, 85, 100][i] : scanProgress >= 98;
+                  return (
+                    <motion.div
+                      key={stage.label}
+                      className="flex items-center gap-3"
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: active ? 1 : 0.3, x: 0 }}
+                      transition={{ delay: 0.1 * i, duration: 0.3 }}
+                    >
+                      {done ? (
+                        <svg className="h-4 w-4 text-[#22c55e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : active ? (
+                        <motion.div
+                          className="h-4 w-4 rounded-full border-2 border-white/20 border-t-[var(--accent)]"
+                          animate={{ rotate: 360 }}
+                          transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                        />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full border border-white/10" />
+                      )}
+                      <span className={`text-[13px] ${done ? 'text-white/60' : active ? 'text-white/80' : 'text-white/30'}`}>
+                        {stage.label}
+                      </span>
+                    </motion.div>
+                  );
+                })}
+              </div>
+
+              {/* Progress bar */}
+              <div className="mt-8">
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
                   <motion.div
-                    className="h-full rounded-full"
+                    className="h-full rounded-full relative"
                     style={{
                       width: `${scanProgress}%`,
-                      background: 'linear-gradient(90deg, var(--accent), #a78bfa)',
+                      background: 'linear-gradient(90deg, var(--accent), #a78bfa, var(--accent))',
+                      backgroundSize: '200% 100%',
                     }}
-                    transition={{ duration: 0.3 }}
+                    animate={{ backgroundPosition: ['0% 0%', '200% 0%'] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
                   />
                 </div>
                 <div className="mt-3 flex justify-between text-[13px]">
-                  <span className="text-white/50">{scanStage}</span>
-                  <span className="tabular-nums font-medium text-white/40">{scanProgress}%</span>
+                  <span className="text-white/40">{scanStage}</span>
+                  <span className="tabular-nums font-semibold text-[var(--accent)]">{scanProgress}%</span>
                 </div>
               </div>
             </motion.div>
