@@ -162,6 +162,8 @@ export interface TrackedSubscription {
   lastCharged: string;
   active: boolean;
   status?: 'active' | 'cancelled' | 'failed' | 'likely_cancelled';
+  subscriptionType?: 'paid' | 'free_trial' | 'freemium' | 'unknown';
+  trialEndsAt?: string | null;
   emailCount: number;
   chargeCount?: number;
   hasCancellation?: boolean;

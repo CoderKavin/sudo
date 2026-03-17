@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence, useInView, useScroll, useTransform, useMotionValue, useSpring } from 'framer-motion';
+
+const ScanPage = lazy(() => import('./ScanPage'));
 
 /* ─── Animated counter ─── */
 function Counter({ end, prefix = '', suffix = '', duration = 2000 }: {
@@ -60,17 +61,19 @@ const TICKER_DATA: { name: string; city: string }[] = [
 ];
 
 function LiveTicker() {
-  const [items, setItems] = useState<{ id: number; city: string; name: string; breaches: number; seconds: number }[]>([]);
+  const [items, setItems] = useState<{ id: number; city: string; name: string; breaches: number; subs: number; seconds: number }[]>([]);
   const idRef = useRef(0);
 
   useEffect(() => {
     const gen = () => {
       const entry = TICKER_DATA[Math.floor(Math.random() * TICKER_DATA.length)];
+      const isSub = Math.random() > 0.6;
       return {
         id: ++idRef.current,
         city: entry.city,
         name: entry.name,
-        breaches: Math.floor(Math.random() * 12) + 1,
+        breaches: isSub ? 0 : Math.floor(Math.random() * 12) + 1,
+        subs: isSub ? Math.floor(Math.random() * 8) + 3 : 0,
         seconds: Math.floor(Math.random() * 8) + 2,
       };
     };
@@ -121,7 +124,10 @@ function LiveTicker() {
               <span className="mx-1 text-white/15">in</span>
               <span className="text-white/50">{item.city}</span>
               <span className="mx-1 text-white/15">found</span>
-              <span className="font-bold text-[#ef4444]">{item.breaches} breaches</span>
+              {item.subs > 0
+                ? <span className="font-bold text-[#22c55e]">{item.subs} hidden subs</span>
+                : <span className="font-bold text-[#ef4444]">{item.breaches} breaches</span>
+              }
             </span>
             <span className="text-[11px] tabular-nums text-white/15 ml-1">{item.seconds}s ago</span>
           </motion.div>
@@ -155,7 +161,7 @@ function OrbitDots() {
 
 /* ─── Floating particles ─── */
 function FloatingParticles({ count = 20 }: { count?: number }) {
-  const particles = useRef(
+  const [particles] = useState(() =>
     Array.from({ length: count }, (_, i) => ({
       id: i,
       x: Math.random() * 100,
@@ -164,7 +170,7 @@ function FloatingParticles({ count = 20 }: { count?: number }) {
       duration: Math.random() * 20 + 15,
       delay: Math.random() * -20,
     }))
-  ).current;
+  );
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -200,15 +206,20 @@ function FloatingParticles({ count = 20 }: { count?: number }) {
 function GlitchText({ text, className = '', delay = 0 }: { text: string; className?: string; delay?: number }) {
   const ref = useRef<HTMLSpanElement>(null);
   const inView = useInView(ref, { once: true, margin: '-50px' });
-  const [display, setDisplay] = useState(text);
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%';
+  const hasRun = useRef(false);
+  const [display, setDisplay] = useState(() =>
+    text.split('').map((c) => (c === ' ' ? ' ' : chars[Math.floor(Math.random() * chars.length)])).join('')
+  );
 
   useEffect(() => {
-    if (!inView) return;
+    if (!inView || hasRun.current) return;
+    hasRun.current = true;
     let frame = 0;
-    const totalFrames = 15;
-    const timeout = setTimeout(() => {
-      const interval = setInterval(() => {
+    const totalFrames = 22;
+    let intervalId: ReturnType<typeof setInterval>;
+    const timeoutId = setTimeout(() => {
+      intervalId = setInterval(() => {
         frame++;
         const progress = frame / totalFrames;
         const revealed = Math.floor(progress * text.length);
@@ -219,16 +230,114 @@ function GlitchText({ text, className = '', delay = 0 }: { text: string; classNa
         }).join('');
         setDisplay(result);
         if (frame >= totalFrames) {
-          clearInterval(interval);
+          clearInterval(intervalId);
           setDisplay(text);
         }
-      }, 40);
-      return () => clearInterval(interval);
+      }, 45);
     }, delay);
-    return () => clearTimeout(timeout);
+    return () => { clearTimeout(timeoutId); clearInterval(intervalId); };
   }, [inView, text, delay]);
 
   return <span ref={ref} className={className}>{display}</span>;
+}
+
+/* ─── Magnifying glass reveal text ─── */
+function MagnifyReveal({ text, className = '' }: { text: string; className?: string }) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const glassRef = useRef<HTMLDivElement>(null);
+  const lightRef = useRef<HTMLDivElement>(null);
+  const inView = useInView(containerRef, { once: true, margin: '-80px' });
+  const hasRun = useRef(false);
+
+  useEffect(() => {
+    if (!inView || hasRun.current || !containerRef.current || !glassRef.current || !lightRef.current) return;
+    hasRun.current = true;
+
+    const el = containerRef.current;
+    const glass = glassRef.current;
+    const light = lightRef.current;
+
+    const measure = () => {
+      const rect = el.getBoundingClientRect();
+      return { w: rect.width, h: rect.height };
+    };
+
+    const { w, h } = measure();
+
+    // Simple bezier path — guaranteed to go from off-left to off-right
+    const totalDuration = 3500;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      let t = Math.min(elapsed / totalDuration, 1);
+      // Smooth ease in-out
+      t = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
+
+      // X goes from well off-left to well off-right
+      const x = -80 + t * (w + 160);
+      // Y wobbles gently with a sine wave
+      const y = h * 0.45 + Math.sin(t * Math.PI * 2.5) * h * 0.12;
+
+      // Move glass and light mask
+      glass.style.transform = `translate3d(${x - 32}px, ${y - 32}px, 0)`;
+      const mask = `radial-gradient(circle 150px at ${x}px ${y}px, black 0%, rgba(0,0,0,0.6) 25%, transparent 65%)`;
+      light.style.webkitMaskImage = mask;
+      light.style.maskImage = mask;
+
+      if (elapsed < totalDuration) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [inView]);
+
+  return (
+    <div ref={containerRef} className={`relative inline-block ${className}`}>
+      {/* Dim base text */}
+      <span className="relative text-white/[0.12]">{text}</span>
+
+      {/* Illuminated text layer — masked by radial gradient that follows the glass */}
+      <span
+        ref={lightRef}
+        className="absolute inset-0 text-white"
+        style={{
+          WebkitMaskImage: 'radial-gradient(circle 140px at -60px 50%, black 0%, rgba(0,0,0,0.5) 30%, transparent 70%)',
+          maskImage: 'radial-gradient(circle 140px at -60px 50%, black 0%, rgba(0,0,0,0.5) 30%, transparent 70%)',
+          willChange: '-webkit-mask-image',
+        }}
+      >
+        {text}
+      </span>
+
+      {/* Magnifying glass — always present, starts off-screen left */}
+      <div
+        ref={glassRef}
+        className="absolute top-0 left-0 z-20 pointer-events-none"
+        style={{
+          width: 64,
+          height: 64,
+          transform: 'translate3d(-80px, 50%, 0)',
+          willChange: 'transform',
+        }}
+      >
+        {/* Ambient glow */}
+        <div
+          className="absolute -inset-12 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(167,139,250,0.2) 0%, transparent 65%)' }}
+        />
+        {/* Glass SVG */}
+        <svg width="64" height="64" viewBox="0 0 64 64" fill="none" style={{ filter: 'drop-shadow(0 0 12px rgba(167,139,250,0.5))' }}>
+          <circle cx="26" cy="26" r="18" stroke="rgba(167,139,250,0.7)" strokeWidth="2" fill="rgba(167,139,250,0.05)" />
+          <circle cx="26" cy="26" r="16" stroke="rgba(255,255,255,0.12)" strokeWidth="1" fill="none" />
+          <line x1="39" y1="39" x2="56" y2="56" stroke="rgba(167,139,250,0.6)" strokeWidth="3" strokeLinecap="round" />
+          {/* Glint */}
+          <path d="M16 18 Q18 13, 23 16" stroke="rgba(255,255,255,0.35)" strokeWidth="2" strokeLinecap="round" fill="none" />
+        </svg>
+      </div>
+    </div>
+  );
 }
 
 /* ─── Magnetic hover card ─── */
@@ -324,8 +433,8 @@ const features = [
     icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 3.75H6A2.25 2.25 0 003.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0120.25 6v1.5m0 9V18A2.25 2.25 0 0118 20.25h-1.5m-9 0H6A2.25 2.25 0 013.75 18v-1.5M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>,
   },
   {
-    title: 'Subscription Tracker',
-    desc: "Uncovers every recurring charge draining your bank account. The average user finds $247/mo.",
+    title: 'Subscription Manager',
+    desc: "Finds every subscription tied to your email — paid, free trials about to convert, and forgotten services still charging you. Average user saves $247/mo.",
     stat: '$247',
     color: '#22c55e',
     glow: 'rgba(34,197,94,0.15)',
@@ -336,51 +445,75 @@ const features = [
 const socialProof = [
   { num: 47283, label: 'Scans completed', prefix: '' },
   { num: 2.1, label: 'Million breaches found', prefix: '' },
+  { num: 247, label: 'Avg. hidden monthly spend found', prefix: '$' },
   { num: 89, label: 'Avg. privacy score improvement', prefix: '+' },
 ];
 
 /* ─── Vanish transition overlay ─── */
-function VanishTransition({ onComplete }: { onComplete: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onComplete, 1200);
-    return () => clearTimeout(timer);
-  }, [onComplete]);
+function VanishTransition() {
+  const [particles] = useState(() =>
+    Array.from({ length: 80 }, () => {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 100 + Math.random() * 400;
+      return {
+        size: Math.random() * 3 + 1,
+        left: Math.random() * 100,
+        top: Math.random() * 100,
+        dx: Math.cos(angle) * speed,
+        dy: Math.sin(angle) * speed,
+        delay: Math.random() * 0.4,
+        rotate: (Math.random() - 0.5) * 720,
+      };
+    })
+  );
 
   return (
     <motion.div
       className="fixed inset-0 z-[200] pointer-events-none"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      transition={{ duration: 0.1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
     >
-      {/* Dissolve particles */}
-      {Array.from({ length: 60 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute rounded-sm bg-[var(--accent)]"
-          style={{
-            width: Math.random() * 4 + 2,
-            height: Math.random() * 4 + 2,
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-          }}
-          initial={{ opacity: 0.8, scale: 1 }}
-          animate={{
-            opacity: 0,
-            scale: 0,
-            x: (Math.random() - 0.5) * 300,
-            y: (Math.random() - 0.5) * 300,
-          }}
-          transition={{ duration: 0.8, delay: Math.random() * 0.3, ease: 'easeOut' }}
-        />
-      ))}
-      {/* Wipe effect */}
+      {/* Central flash */}
       <motion.div
         className="absolute inset-0"
-        style={{ background: 'var(--bg)' }}
-        initial={{ clipPath: 'circle(0% at 50% 50%)' }}
-        animate={{ clipPath: 'circle(150% at 50% 50%)' }}
-        transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+        style={{ background: 'radial-gradient(circle at 50% 50%, rgba(167,139,250,0.08) 0%, transparent 60%)' }}
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.5, 2] }}
+        transition={{ duration: 0.8, ease: 'easeOut' }}
+      />
+      {/* Scatter particles */}
+      {particles.map((p, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            width: p.size,
+            height: p.size,
+            left: `${p.left}%`,
+            top: `${p.top}%`,
+            background: i % 3 === 0 ? 'rgba(167,139,250,0.8)' : 'rgba(255,255,255,0.5)',
+          }}
+          initial={{ opacity: 0.9, scale: 1, rotate: 0 }}
+          animate={{ opacity: 0, scale: 0, x: p.dx, y: p.dy, rotate: p.rotate }}
+          transition={{ duration: 0.6 + p.delay, delay: p.delay * 0.5, ease: [0.32, 0, 0.67, 0] }}
+        />
+      ))}
+      {/* Horizontal scan line */}
+      <motion.div
+        className="absolute left-0 right-0 h-px"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(167,139,250,0.4), transparent)' }}
+        initial={{ top: '50%', opacity: 0, scaleX: 0 }}
+        animate={{ top: ['50%', '0%'], opacity: [0, 1, 0], scaleX: [0, 1, 1] }}
+        transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
+      />
+      <motion.div
+        className="absolute left-0 right-0 h-px"
+        style={{ background: 'linear-gradient(90deg, transparent, rgba(167,139,250,0.4), transparent)' }}
+        initial={{ top: '50%', opacity: 0, scaleX: 0 }}
+        animate={{ top: ['50%', '100%'], opacity: [0, 1, 0], scaleX: [0, 1, 1] }}
+        transition={{ duration: 0.6, delay: 0.1, ease: 'easeOut' }}
       />
     </motion.div>
   );
@@ -388,7 +521,6 @@ function VanishTransition({ onComplete }: { onComplete: () => void }) {
 
 /* ─── Page ─── */
 export default function LandingPage() {
-  const navigate = useNavigate();
   const heroRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ['start start', 'end start'] });
   const heroOpacity = useTransform(scrollYProgress, [0, 0.5], [1, 0]);
@@ -396,25 +528,41 @@ export default function LandingPage() {
   const [vanishing, setVanishing] = useState(false);
 
   // Live scan counter — seeded from date so it's always growing
-  const baseScanCount = useRef(() => {
+  const [scanCount, setScanCount] = useState(() => {
     const launch = new Date('2025-01-01').getTime();
     const now = Date.now();
     const daysSince = (now - launch) / 86400000;
     return Math.floor(47000 + daysSince * 127 + (now % 86400000) / 86400000 * 127);
-  }).current;
-  const [scanCount, setScanCount] = useState(baseScanCount);
+  });
   useEffect(() => {
     const t = setInterval(() => setScanCount(c => c + Math.floor(Math.random() * 2) + 1), 6000);
     return () => clearInterval(t);
   }, []);
 
+  const [showScan, setShowScan] = useState(false);
+
+  // Pre-generated hero dissolve particles (useState lazy init is pure in React 19)
+  const [heroParticles] = useState(() =>
+    Array.from({ length: 12 }, () => ({
+      w: Math.random() * 3 + 1.5,
+      right: Math.random() * 15,
+      top: 20 + Math.random() * 60,
+      dx: 30 + Math.random() * 40,
+      dur: 1.5 + Math.random(),
+      delay: 1.2 + Math.random() * 2,
+      repeatDelay: 2 + Math.random() * 3,
+    }))
+  );
+
   const handleNavigateToScan = useCallback(() => {
     setVanishing(true);
+    // After landing content fully dissolves, swap to scan content
+    setTimeout(() => {
+      setShowScan(true);
+      setVanishing(false);
+      window.history.replaceState(null, '', '/scan');
+    }, 1000);
   }, []);
-
-  const completeVanish = useCallback(() => {
-    navigate('/scan');
-  }, [navigate]);
 
   return (
     <motion.div
@@ -423,23 +571,41 @@ export default function LandingPage() {
       exit={{ opacity: 0 }}
       transition={{ duration: 0.5 }}
     >
-      {/* Vanish transition overlay */}
+      {/* Vanish transition particles */}
       <AnimatePresence>
-        {vanishing && <VanishTransition onComplete={completeVanish} />}
+        {vanishing && <VanishTransition />}
       </AnimatePresence>
 
-      {/* ─── Page content that dissolves ─── */}
+      {/* ─── Scan page content (materializes after vanish) ─── */}
+      <AnimatePresence>
+        {showScan && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, filter: 'blur(16px)' }}
+            animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+            transition={{ duration: 0.9, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <Suspense fallback={null}>
+              <ScanPage />
+            </Suspense>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Landing page content that dissolves ─── */}
+      {!showScan && (
       <motion.div
         animate={vanishing ? {
-          scale: 0.95,
+          scale: 0.92,
           opacity: 0,
-          filter: 'blur(10px)',
+          filter: 'blur(20px)',
+          y: -30,
         } : {
           scale: 1,
           opacity: 1,
           filter: 'blur(0px)',
+          y: 0,
         }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        transition={{ duration: 0.8, ease: [0.32, 0, 0.67, 0] }}
       >
         {/* ─── Floating Nav ─── */}
         <motion.nav
@@ -462,12 +628,28 @@ export default function LandingPage() {
               </span>
             </div>
 
-            <button
-              className="ml-auto rounded-full bg-white/[0.1] px-4 py-1.5 text-[13px] font-medium text-white/80 transition-all duration-300 hover:bg-white/[0.15] hover:text-white active:scale-95"
+            <motion.button
+              className="nav-scan-btn ml-auto relative overflow-hidden rounded-full bg-white/[0.08] px-4 py-1.5 text-[13px] font-medium text-white/70 border border-white/[0.06]"
               onClick={handleNavigateToScan}
+              whileHover={{
+                backgroundColor: 'rgba(124,106,239,0.15)',
+                borderColor: 'rgba(124,106,239,0.3)',
+                color: 'rgba(255,255,255,0.95)',
+                scale: 1.05,
+                boxShadow: '0 0 20px rgba(124,106,239,0.2), 0 0 40px rgba(124,106,239,0.1)',
+              }}
+              whileTap={{ scale: 0.95 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 15 }}
             >
-              Start Scan
-            </button>
+              <motion.span
+                className="absolute inset-0 rounded-full pointer-events-none"
+                style={{ background: 'linear-gradient(90deg, transparent, rgba(124,106,239,0.15), transparent)' }}
+                initial={{ x: '-100%' }}
+                whileHover={{ x: '100%' }}
+                transition={{ duration: 0.6, ease: 'easeInOut' }}
+              />
+              <span className="relative z-10">Start Scan</span>
+            </motion.button>
           </div>
         </motion.nav>
 
@@ -475,12 +657,20 @@ export default function LandingPage() {
         <section ref={heroRef} className="relative mx-auto max-w-6xl px-6 pt-36 pb-24 overflow-hidden">
           <OrbitDots />
 
+          {/* Radial gradient pulse behind hero text */}
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full pointer-events-none"
+            style={{ background: 'radial-gradient(circle, rgba(124,106,239,0.06) 0%, transparent 70%)' }}
+            animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+          />
+
           <motion.div style={{ opacity: heroOpacity, scale: heroScale }} className="relative text-center">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] px-4 py-1.5"
+              className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] px-4 py-1.5 backdrop-blur-sm"
             >
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--accent)] opacity-50" />
@@ -492,67 +682,126 @@ export default function LandingPage() {
             </motion.div>
 
             <motion.h1
-              initial={{ opacity: 0, y: 30 }}
+              initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
+              transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
               className="text-[clamp(3rem,6.5vw,5rem)] font-bold leading-[1.05] tracking-[-0.04em]"
             >
-              <span className="text-white">Your data is everywhere.</span>
-              <br />
-              <span className="bg-gradient-to-r from-[#6366f1] via-[#a78bfa] to-[#6366f1] bg-clip-text text-transparent">
-                Take it back.
+              <span className="text-white inline-flex flex-wrap justify-center gap-x-[0.3em]">
+                {'Your data is everywhere.'.split(' ').map((word, i) => (
+                  <motion.span
+                    key={i}
+                    initial={{ opacity: 0, y: 20, filter: 'blur(8px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    transition={{ duration: 0.6, delay: 0.4 + i * 0.08, ease: [0.16, 1, 0.3, 1] }}
+                  >
+                    {word}
+                  </motion.span>
+                ))}
               </span>
+              <br />
+              <motion.span
+                className="inline-block relative"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.9, duration: 0.5 }}
+              >
+                <motion.span
+                  className="inline-block bg-gradient-to-r from-[#6366f1] via-[#a78bfa] to-[#c084fc] bg-clip-text text-transparent"
+                  style={{ backgroundSize: '200% 100%' }}
+                  animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+                  transition={{ duration: 5, repeat: Infinity, ease: 'linear' }}
+                >
+                  Take it back.
+                </motion.span>
+                {/* Dissolving particles off the text edges */}
+                {heroParticles.map((p, i) => (
+                  <motion.span
+                    key={i}
+                    className="absolute rounded-full bg-[#a78bfa]"
+                    style={{ width: p.w, height: p.w, right: `${p.right}%`, top: `${p.top}%` }}
+                    animate={{ x: [0, p.dx], opacity: [0.6, 0], scale: [1, 0] }}
+                    transition={{ duration: p.dur, repeat: Infinity, delay: p.delay, repeatDelay: p.repeatDelay, ease: 'easeOut' }}
+                  />
+                ))}
+              </motion.span>
             </motion.h1>
 
             <motion.p
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.45 }}
+              transition={{ duration: 0.7, delay: 0.5 }}
               className="mx-auto mt-6 max-w-lg text-[17px] leading-[1.7] text-white/40"
             >
-              Breaches, data brokers, forgotten accounts, hidden subscriptions —
+              Breaches, data brokers, forgotten accounts, hidden subscriptions draining your wallet.
               Vanish finds everything tied to your email in <span className="text-white/60 font-medium">under 30 seconds</span>.
             </motion.p>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.55 }}
+              transition={{ duration: 0.7, delay: 0.6 }}
               className="mt-10 flex flex-wrap justify-center gap-4"
             >
-              <button className="btn-primary text-[15px]" onClick={handleNavigateToScan}>
-                Scan My Email Free
-              </button>
-              <button
+              <motion.button
+                className="btn-primary text-[15px] relative"
+                onClick={handleNavigateToScan}
+                whileHover={{ scale: 1.04, y: -3 }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+              >
+                {/* Shimmer sweep */}
+                <motion.span
+                  className="absolute inset-0 rounded-full pointer-events-none overflow-hidden"
+                >
+                  <motion.span
+                    className="absolute inset-0"
+                    style={{ background: 'linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%)' }}
+                    animate={{ x: ['-100%', '200%'] }}
+                    transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 3, ease: 'easeInOut' }}
+                  />
+                </motion.span>
+                <span className="relative z-10">Scan My Email Free</span>
+              </motion.button>
+              <motion.button
                 className="btn-secondary text-[15px]"
                 onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+                whileHover={{ scale: 1.04, y: -2, borderColor: 'rgba(255,255,255,0.15)' }}
+                whileTap={{ scale: 0.97 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 15 }}
               >
                 See what we find
-              </button>
+              </motion.button>
             </motion.div>
 
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.7, duration: 0.8 }}
+              transition={{ delay: 0.8, duration: 0.8 }}
               className="mt-8 flex flex-wrap justify-center gap-6 text-[12px] font-medium text-white/20"
             >
-              {['No sign-up required', 'Browser-only processing', '100% free'].map((t) => (
-                <span key={t} className="flex items-center gap-1.5">
+              {['No sign-up required', 'Browser-only processing', '100% free'].map((t, i) => (
+                <motion.span
+                  key={t}
+                  className="flex items-center gap-1.5"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.9 + i * 0.1, duration: 0.5 }}
+                >
                   <svg className="h-3 w-3 text-[#22c55e]/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                   {t}
-                </span>
+                </motion.span>
               ))}
             </motion.div>
           </motion.div>
 
           {/* Live ticker */}
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.1, duration: 0.6 }}
           >
             <LiveTicker />
           </motion.div>
@@ -562,7 +811,7 @@ export default function LandingPage() {
         <FadeInSection>
           <div className="mx-auto max-w-6xl px-6">
             <div className="glow-line" />
-            <div className="glass-card !rounded-2xl grid grid-cols-3 gap-8 py-10 text-center">
+            <div className="glass-card !rounded-2xl grid grid-cols-2 md:grid-cols-4 gap-8 py-10 text-center">
               {socialProof.map((s) => (
                 <div key={s.label}>
                   <div className="text-[2rem] font-bold tracking-tight text-white tabular-nums">
@@ -739,8 +988,8 @@ export default function LandingPage() {
             <div className="grid gap-12 md:gap-20">
               {[
                 { num: '01', title: 'Enter your email', desc: 'Just type it in. No sign-up, no password, no OAuth.', color: '#6366f1' },
-                { num: '02', title: 'We scan everything', desc: 'Breach databases, broker lists, service records — all at once in your browser.', color: '#a78bfa' },
-                { num: '03', title: 'Take action', desc: 'See your full exposure report. Resolve breaches. Request data removal.', color: '#22c55e' },
+                { num: '02', title: 'We scan everything', desc: 'Breach databases, broker lists, subscriptions, free trials — all at once in your browser.', color: '#a78bfa' },
+                { num: '03', title: 'Take action', desc: 'See your full exposure. Resolve breaches. Cancel forgotten subscriptions. Request data removal.', color: '#22c55e' },
               ].map((s, i) => (
                 <motion.div
                   key={s.num}
@@ -898,57 +1147,63 @@ export default function LandingPage() {
 
           {/* Data flow — animated pipeline */}
           <FadeInSection>
-            <div className="glass-card mt-5 relative overflow-hidden">
-              {/* Traveling pulse across pipeline */}
-              <motion.div
-                className="absolute top-0 h-full w-32 pointer-events-none"
-                style={{
-                  background: 'linear-gradient(90deg, transparent, var(--accent-glow), transparent)',
-                  opacity: 0.06,
-                }}
-                animate={{ left: ['-10%', '110%'] }}
-                transition={{ duration: 3, repeat: Infinity, ease: 'linear', repeatDelay: 2 }}
-              />
+            <div className="mt-16 relative">
+              <p className="section-label mb-8 text-center">Data Flow</p>
+              <div className="relative flex items-center justify-center gap-0">
+                {/* Connecting line behind nodes */}
+                <div className="absolute top-1/2 left-[15%] right-[15%] h-px bg-white/[0.06] -translate-y-1/2" />
+                {/* Traveling pulse */}
+                <motion.div
+                  className="absolute top-1/2 -translate-y-1/2 h-px w-[20%] pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
+                    left: '15%',
+                  }}
+                  animate={{ left: ['15%', '65%'] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', repeatDelay: 1.5 }}
+                />
 
-              <p className="section-label mb-5">Data Flow</p>
-              <div className="flex flex-wrap items-center gap-3 text-[14px]">
                 {[
-                  { label: 'Your email', accent: false },
-                  { label: '→', arrow: true },
-                  { label: 'Breach & broker lookup', accent: false },
-                  { label: '→', arrow: true },
-                  { label: 'Results in your browser', accent: true },
-                ].map((item, i) =>
-                  item.arrow ? (
-                    <motion.span
-                      key={i}
-                      animate={{ x: [0, 6, 0] }}
-                      transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.15 }}
-                      className="text-white/15 text-lg"
-                    >
-                      →
-                    </motion.span>
-                  ) : (
-                    <motion.span
-                      key={i}
-                      className={`rounded-full px-5 py-2 font-medium ${
-                        item.accent
-                          ? 'bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-[var(--accent)]'
-                          : 'bg-white/[0.04] border border-white/[0.06] text-white/50'
+                  { step: '01', label: 'Your email', desc: 'Connect Gmail', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" /></svg> },
+                  { step: '02', label: 'Scan & lookup', desc: 'Breaches · Brokers · Subscriptions', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg> },
+                  { step: '03', label: 'Local results', desc: 'Never leaves your device', icon: <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" /></svg> },
+                ].map((item, i) => (
+                  <motion.div
+                    key={i}
+                    className="relative z-10 flex flex-col items-center flex-1"
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    transition={{ delay: 0.15 + i * 0.2, duration: 0.6, ease: [0.25, 0.46, 0.45, 0.94] }}
+                  >
+                    {/* Node */}
+                    <motion.div
+                      className={`relative w-16 h-16 rounded-2xl flex items-center justify-center text-xl mb-4 ${
+                        i === 2
+                          ? 'bg-[var(--accent)]/[0.08] border border-[var(--accent)]/20 text-[var(--accent)]'
+                          : 'bg-white/[0.03] border border-white/[0.08] text-white/30'
                       }`}
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      whileInView={{ opacity: 1, scale: 1 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: 0.2 + i * 0.15, type: 'spring', stiffness: 300, damping: 20 }}
-                      whileHover={{ scale: 1.05, y: -2 }}
+                      whileHover={{ scale: 1.1, borderColor: 'rgba(124,106,239,0.3)' }}
+                      transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                     >
-                      {item.label}
-                    </motion.span>
-                  )
-                )}
+                      {item.icon}
+                      {/* Ping on last node */}
+                      {i === 2 && (
+                        <motion.div
+                          className="absolute inset-0 rounded-2xl border border-[var(--accent)]/20"
+                          animate={{ scale: [1, 1.3], opacity: [0.3, 0] }}
+                          transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
+                        />
+                      )}
+                    </motion.div>
+                    <span className="text-[10px] font-mono text-white/15 tracking-widest mb-1">{item.step}</span>
+                    <span className="text-[14px] font-medium text-white/70">{item.label}</span>
+                    <span className="text-[11px] text-white/25 mt-0.5">{item.desc}</span>
+                  </motion.div>
+                ))}
               </div>
-              <p className="mt-4 text-[13px] text-white/20">
-                That's the entire pipeline. Your data never leaves your device.
+              <p className="mt-10 text-center text-[13px] text-white/15">
+                That's the entire pipeline. Zero servers. Zero storage. Zero trust required.
               </p>
             </div>
           </FadeInSection>
@@ -990,8 +1245,8 @@ export default function LandingPage() {
                 >
                   Ready?
                 </motion.p>
-                <h2 className="text-[2.5rem] font-bold tracking-tight text-white">
-                  <GlitchText text="Find out what they know." delay={300} />
+                <h2 className="text-[2.5rem] font-bold tracking-tight">
+                  <MagnifyReveal text="Find out what they know." />
                 </h2>
                 <p className="mx-auto mt-4 max-w-md text-[16px] leading-relaxed text-white/35">
                   Join <span className="font-semibold text-white/60">{scanCount.toLocaleString()}+</span> people who've already scanned.
@@ -1022,6 +1277,7 @@ export default function LandingPage() {
           </div>
         </footer>
       </motion.div>
+      )}
     </motion.div>
   );
 }

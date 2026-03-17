@@ -36,6 +36,7 @@ export interface ScannedDataBroker {
   status: 'found' | 'removing' | 'removed';
   dataTypes: string[];
   url: string;
+  optOutUrl: string | null;
 }
 
 export interface ScanResults {
@@ -43,6 +44,48 @@ export interface ScanResults {
   dataBrokers: ScannedDataBroker[];
   privacyScore: number;
   breachSource: 'real' | 'mock';
+}
+
+// ---------------------------------------------------------------------------
+// Score breakdown — shows what's affecting the score
+// ---------------------------------------------------------------------------
+
+export interface ScoreBreakdown {
+  total: number;
+  breachPenalty: number;
+  brokerPenalty: number;
+  resolvedBonus: number;
+  removedBrokerBonus: number;
+}
+
+export function calculateScoreBreakdown(
+  breaches: ScannedBreach[],
+  brokers: ScannedDataBroker[],
+): ScoreBreakdown {
+  let breachPenalty = 0;
+  let resolvedBonus = 0;
+
+  for (const b of breaches) {
+    const penalty = b.severity === 'critical' ? 12
+      : b.severity === 'high' ? 8
+      : b.severity === 'medium' ? 5 : 2;
+    if (b.resolved) {
+      resolvedBonus += Math.round(penalty * 0.7); // recovering 70% for resolved
+    } else {
+      breachPenalty += penalty;
+    }
+  }
+
+  const activeBrokers = brokers.filter(b => b.status === 'found').length;
+  const removedBrokers = brokers.filter(b => b.status === 'removed').length;
+  const brokerPenalty = Math.round(activeBrokers * 1.5);
+  const removedBrokerBonus = Math.round(removedBrokers * 1);
+
+  const total = Math.max(5, Math.min(100, Math.round(
+    100 - breachPenalty - brokerPenalty + resolvedBonus + removedBrokerBonus
+  )));
+
+  return { total, breachPenalty, brokerPenalty, resolvedBonus, removedBrokerBonus };
 }
 
 // ---------------------------------------------------------------------------
@@ -75,28 +118,6 @@ function createRng(seed: number) {
 function pickN<T>(arr: T[], n: number, rng: () => number): T[] {
   const shuffled = [...arr].sort(() => rng() - 0.5);
   return shuffled.slice(0, Math.min(n, arr.length));
-}
-
-// ---------------------------------------------------------------------------
-// Privacy score
-// ---------------------------------------------------------------------------
-
-function calculatePrivacyScore(
-  breaches: ScannedBreach[],
-  brokers: ScannedDataBroker[],
-): number {
-  let score = 100;
-
-  for (const b of breaches) {
-    if (b.severity === 'critical') score -= 12;
-    else if (b.severity === 'high') score -= 8;
-    else if (b.severity === 'medium') score -= 5;
-    else score -= 2;
-  }
-
-  score -= brokers.length * 1.5;
-
-  return Math.max(5, Math.min(100, Math.round(score)));
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +166,10 @@ export async function simulateScan(
     status: 'found' as const,
     dataTypes: br.dataTypes,
     url: br.url,
+    optOutUrl: br.optOutUrl,
   }));
 
-  const privacyScore = calculatePrivacyScore(breaches, dataBrokers);
+  const { total: privacyScore } = calculateScoreBreakdown(breaches, dataBrokers);
 
   return {
     breaches,

@@ -8,7 +8,9 @@ import { persist } from 'zustand/middleware';
 import type {
   ScannedBreach,
   ScannedDataBroker,
+  ScoreBreakdown,
 } from '../lib/scanner';
+import { calculateScoreBreakdown } from '../lib/scanner';
 import type {
   DiscoveredAccount,
   TrackedSubscription,
@@ -20,7 +22,7 @@ import type {
 
 export interface ConnectedEmail {
   email: string;
-  provider: 'gmail' | 'outlook' | 'yahoo';
+  provider: 'gmail' | 'outlook' | 'yahoo' | 'other';
   connected: boolean;
   lastScanned: string | null;
   breachCount: number;
@@ -47,6 +49,8 @@ export interface DarkWebAlert {
   resolved: boolean;
 }
 
+export type NotificationType = 'breach_alert' | 'dark_web' | 'weekly_summary';
+
 // ---------------------------------------------------------------------------
 // Store state & actions
 // ---------------------------------------------------------------------------
@@ -71,11 +75,19 @@ interface VanishState {
   // Privacy
   privacyScore: number;
   scoreHistory: ScoreSnapshot[];
+  scoreBreakdown: ScoreBreakdown;
 
   // Dark web monitoring
   darkWebAlerts: DarkWebAlert[];
   darkWebLastChecked: string | null;
   darkWebScanning: boolean;
+  monitoringEnabled: boolean;
+  monitoringInterval: number; // hours
+
+  // Notifications
+  notificationEmail: string | null;
+  notificationsEnabled: boolean;
+  notificationTypes: NotificationType[];
 
   // Remediation tracking
   remediationProgress: RemediationProgress;
@@ -99,9 +111,16 @@ interface VanishState {
   setDarkWebAlerts: (alerts: DarkWebAlert[]) => void;
   setDarkWebScanning: (scanning: boolean) => void;
   markDarkWebAlertResolved: (alertId: string) => void;
+  setMonitoringEnabled: (enabled: boolean) => void;
+  setMonitoringInterval: (hours: number) => void;
+  setNotificationEmail: (email: string | null) => void;
+  setNotificationsEnabled: (enabled: boolean) => void;
+  setNotificationTypes: (types: NotificationType[]) => void;
   toggleRemediationStep: (breachId: string, stepId: string) => void;
   clearAllData: () => void;
 }
+
+const DEFAULT_BREAKDOWN: ScoreBreakdown = { total: 0, breachPenalty: 0, brokerPenalty: 0, resolvedBonus: 0, removedBrokerBonus: 0 };
 
 export const useStore = create<VanishState>()(
   persist(
@@ -119,9 +138,15 @@ export const useStore = create<VanishState>()(
       scanStage: '',
       privacyScore: 0,
       scoreHistory: [],
+      scoreBreakdown: DEFAULT_BREAKDOWN,
       darkWebAlerts: [],
       darkWebLastChecked: null,
       darkWebScanning: false,
+      monitoringEnabled: false,
+      monitoringInterval: 24,
+      notificationEmail: null,
+      notificationsEnabled: false,
+      notificationTypes: ['breach_alert', 'dark_web'],
       remediationProgress: {},
 
       // Actions
@@ -156,26 +181,39 @@ export const useStore = create<VanishState>()(
           scanProgress: 100,
         }),
 
-      setBreaches: (breaches) => set({ breaches }),
+      setBreaches: (breaches) =>
+        set((state) => {
+          const breakdown = calculateScoreBreakdown(breaches, state.dataBrokers);
+          return { breaches, privacyScore: breakdown.total, scoreBreakdown: breakdown };
+        }),
 
-      setDataBrokers: (dataBrokers) => set({ dataBrokers }),
+      setDataBrokers: (dataBrokers) =>
+        set((state) => {
+          const breakdown = calculateScoreBreakdown(state.breaches, dataBrokers);
+          return { dataBrokers, privacyScore: breakdown.total, scoreBreakdown: breakdown };
+        }),
 
       updatePrivacyScore: (score) => set({ privacyScore: score }),
 
       addScoreSnapshot: (snapshot) =>
         set((state) => {
-          // Keep last 30 snapshots, one per day max
           const today = snapshot.date.slice(0, 10);
           const filtered = state.scoreHistory.filter((s) => s.date.slice(0, 10) !== today);
           return { scoreHistory: [...filtered, snapshot].slice(-30) };
         }),
 
       markBreachResolved: (breachId) =>
-        set((state) => ({
-          breaches: state.breaches.map((b) =>
+        set((state) => {
+          const breaches = state.breaches.map((b) =>
             b.id === breachId ? { ...b, resolved: true } : b,
-          ),
-        })),
+          );
+          const breakdown = calculateScoreBreakdown(breaches, state.dataBrokers);
+          return {
+            breaches,
+            privacyScore: breakdown.total,
+            scoreBreakdown: breakdown,
+          };
+        }),
 
       markBrokerRemoving: (brokerId) =>
         set((state) => ({
@@ -185,11 +223,17 @@ export const useStore = create<VanishState>()(
         })),
 
       markBrokerRemoved: (brokerId) =>
-        set((state) => ({
-          dataBrokers: state.dataBrokers.map((b) =>
+        set((state) => {
+          const dataBrokers = state.dataBrokers.map((b) =>
             b.id === brokerId ? { ...b, status: 'removed' as const } : b,
-          ),
-        })),
+          );
+          const breakdown = calculateScoreBreakdown(state.breaches, dataBrokers);
+          return {
+            dataBrokers,
+            privacyScore: breakdown.total,
+            scoreBreakdown: breakdown,
+          };
+        }),
 
       setDiscoveredAccounts: (accounts) => set({ discoveredAccounts: accounts }),
 
@@ -209,6 +253,16 @@ export const useStore = create<VanishState>()(
             a.id === alertId ? { ...a, resolved: true } : a,
           ),
         })),
+
+      setMonitoringEnabled: (enabled) => set({ monitoringEnabled: enabled }),
+
+      setMonitoringInterval: (hours) => set({ monitoringInterval: hours }),
+
+      setNotificationEmail: (email) => set({ notificationEmail: email }),
+
+      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
+
+      setNotificationTypes: (types) => set({ notificationTypes: types }),
 
       toggleRemediationStep: (breachId, stepId) =>
         set((state) => {
@@ -233,9 +287,15 @@ export const useStore = create<VanishState>()(
           scanStage: '',
           privacyScore: 0,
           scoreHistory: [],
+          scoreBreakdown: DEFAULT_BREAKDOWN,
           darkWebAlerts: [],
           darkWebLastChecked: null,
           darkWebScanning: false,
+          monitoringEnabled: false,
+          monitoringInterval: 24,
+          notificationEmail: null,
+          notificationsEnabled: false,
+          notificationTypes: ['breach_alert', 'dark_web'],
           remediationProgress: {},
         }),
     }),
@@ -251,8 +311,14 @@ export const useStore = create<VanishState>()(
         extensionEmail: state.extensionEmail,
         privacyScore: state.privacyScore,
         scoreHistory: state.scoreHistory,
+        scoreBreakdown: state.scoreBreakdown,
         darkWebAlerts: state.darkWebAlerts,
         darkWebLastChecked: state.darkWebLastChecked,
+        monitoringEnabled: state.monitoringEnabled,
+        monitoringInterval: state.monitoringInterval,
+        notificationEmail: state.notificationEmail,
+        notificationsEnabled: state.notificationsEnabled,
+        notificationTypes: state.notificationTypes,
         remediationProgress: state.remediationProgress,
         scanState: state.scanState === 'complete' ? 'complete' : 'idle',
       }),

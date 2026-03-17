@@ -25,10 +25,14 @@ export default function ScanPage() {
     const email = emailInput.trim().toLowerCase();
     if (!email || !email.includes('@')) return;
     if (localEmails.some((e) => e.email === email)) return;
-    const provider = email.includes('gmail') ? 'gmail'
-      : email.includes('outlook') || email.includes('hotmail') ? 'outlook' : 'yahoo';
+    const domain = email.split('@')[1] || '';
+    const provider: ConnectedEmail['provider'] =
+      domain.includes('gmail') || domain.includes('googlemail') ? 'gmail'
+      : domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live.') || domain.includes('msn.') ? 'outlook'
+      : domain.includes('yahoo') || domain.includes('ymail') || domain.includes('rocketmail') ? 'yahoo'
+      : 'other';
     setLocalEmails((prev) => [...prev, {
-      email, provider: provider as ConnectedEmail['provider'],
+      email, provider,
       connected: true, lastScanned: null, breachCount: 0,
     }]);
     setEmailInput('');
@@ -90,39 +94,42 @@ export default function ScanPage() {
           {step === 'connect' && (
             <motion.div
               key="connect"
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, scale: 0.97, filter: 'blur(8px)' }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
             >
-              <button
+              <motion.button
                 onClick={() => navigate('/')}
-                className="mb-8 text-[14px] text-white/25 transition-colors hover:text-white/50"
+                className="mb-8 text-[14px] text-white/50 transition-colors hover:text-white/50"
+                initial={{ opacity: 0, x: -12 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               >
                 ← Back
-              </button>
+              </motion.button>
 
               <motion.h1
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+                initial={{ opacity: 0, y: 24, filter: 'blur(10px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ delay: 0.3, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                 className="text-[2rem] font-bold tracking-tight text-white"
               >
                 Connect your email
               </motion.h1>
               <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.15 }}
-                className="mt-2 text-[15px] text-white/35"
+                initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ delay: 0.4, duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className="mt-2 text-[15px] text-white/55"
               >
                 Add one or more accounts to scan your full digital footprint.
               </motion.p>
 
               <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+                initial={{ opacity: 0, y: 30, scale: 0.95, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
+                transition={{ delay: 0.5, duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
                 className="glass-card mt-8"
               >
                 <div className="flex gap-3">
@@ -134,7 +141,13 @@ export default function ScanPage() {
                     placeholder="you@gmail.com"
                     className="input flex-1"
                   />
-                  <button className="btn-sm" onClick={addEmail}>Add</button>
+                  <motion.button
+                    className="btn-sm"
+                    onClick={addEmail}
+                    whileHover={{ scale: 1.05, backgroundColor: 'rgba(255,255,255,0.12)' }}
+                    whileTap={{ scale: 0.95 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 15 }}
+                  >Add</motion.button>
                 </div>
 
                 <AnimatePresence>
@@ -152,19 +165,22 @@ export default function ScanPage() {
                             key={e.email}
                             initial={{ opacity: 0, x: -16 }}
                             animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.05 }}
-                            className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/[0.04] px-4 py-3"
+                            whileHover={{ backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.08)', x: 4 }}
+                            transition={{ delay: i * 0.05, type: 'spring', stiffness: 300, damping: 20 }}
+                            className="flex items-center justify-between rounded-xl bg-white/[0.02] border border-white/[0.04] px-4 py-3 cursor-default"
                           >
                             <div className="flex items-center gap-3">
                               <span className="text-[14px] font-medium text-white/80">{e.email}</span>
-                              <span className="tag">{e.provider}</span>
+                              <span className="tag">{e.provider === 'other' ? e.email.split('@')[1] : e.provider}</span>
                             </div>
-                            <button
+                            <motion.button
                               onClick={() => removeEmail(e.email)}
-                              className="text-[13px] text-white/15 transition-colors hover:text-[#ef4444]"
+                              className="text-[13px] text-white/40"
+                              whileHover={{ color: 'rgba(239,68,68,0.8)', scale: 1.05 }}
+                              whileTap={{ scale: 0.95 }}
                             >
                               Remove
-                            </button>
+                            </motion.button>
                           </motion.div>
                         ))}
                       </div>
@@ -172,22 +188,32 @@ export default function ScanPage() {
                   )}
                 </AnimatePresence>
 
-                <button
+                <motion.button
                   onClick={startScan}
                   disabled={localEmails.length === 0}
                   className="btn-primary mt-6 w-full disabled:opacity-20 disabled:cursor-not-allowed"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                  whileHover={localEmails.length > 0 ? { scale: 1.02, y: -2 } : {}}
+                  whileTap={localEmails.length > 0 ? { scale: 0.98 } : {}}
                 >
                   {localEmails.length === 0
                     ? 'Add an email to start'
                     : `Scan ${localEmails.length} account${localEmails.length > 1 ? 's' : ''}`}
-                </button>
+                </motion.button>
 
-                <p className="mt-4 text-center text-[12px] text-white/15">
+                <motion.p
+                  className="mt-4 text-center text-[12px] text-white/40"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.7, duration: 0.5 }}
+                >
                   <svg className="inline h-3 w-3 mr-1 text-[#22c55e]/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
                   100% browser-side. We literally can't see your data.
-                </p>
+                </motion.p>
               </motion.div>
             </motion.div>
           )}
@@ -224,7 +250,7 @@ export default function ScanPage() {
               </div>
 
               <h1 className="text-[2rem] font-bold tracking-tight text-white">Scanning...</h1>
-              <p className="mt-2 text-[15px] text-white/35">
+              <p className="mt-2 text-[15px] text-white/55">
                 Analyzing <span className="font-medium text-white/60">{currentScanEmail}</span>
               </p>
 
@@ -240,7 +266,7 @@ export default function ScanPage() {
                   />
                 </div>
                 <div className="mt-3 flex justify-between text-[13px]">
-                  <span className="text-white/25">{scanStage}</span>
+                  <span className="text-white/50">{scanStage}</span>
                   <span className="tabular-nums font-medium text-white/40">{scanProgress}%</span>
                 </div>
               </div>
@@ -268,7 +294,7 @@ export default function ScanPage() {
                   </svg>
                 </motion.div>
                 <h1 className="text-[2rem] font-bold tracking-tight text-white">Scan Complete</h1>
-                <p className="mt-2 text-[15px] text-white/35">
+                <p className="mt-2 text-[15px] text-white/55">
                   Here's what we found across {localEmails.length} account{localEmails.length > 1 ? 's' : ''}
                 </p>
               </div>
@@ -291,9 +317,9 @@ export default function ScanPage() {
                       transition={{ delay: 0.3 + i * 0.1 }}
                     >
                       <div className="text-[2.5rem] font-bold tracking-tight tabular-nums" style={{ color: stat.color }}>
-                        {stat.value}
+                        {'prefix' in stat && stat.prefix}{stat.value}
                       </div>
-                      <div className="text-[13px] text-white/30">{stat.label}</div>
+                      <div className="text-[13px] text-white/50">{stat.label}</div>
                     </motion.div>
                   ))}
                 </div>
@@ -318,7 +344,7 @@ export default function ScanPage() {
                   <p className="section-label mb-1">Privacy Score</p>
                   <div className="text-[3.5rem] font-bold tracking-tight tabular-nums" style={{ color: scoreColor }}>
                     {summaryStats.privacyScore}
-                    <span className="text-[1rem] font-medium text-white/15">/100</span>
+                    <span className="text-[1rem] font-medium text-white/40">/100</span>
                   </div>
                 </motion.div>
 
@@ -327,12 +353,15 @@ export default function ScanPage() {
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.6 }}
                 >
-                  <button
+                  <motion.button
                     className="btn-primary mt-8 w-full"
                     onClick={() => navigate('/dashboard')}
+                    whileHover={{ scale: 1.03, y: -2 }}
+                    whileTap={{ scale: 0.97 }}
+                    transition={{ type: 'spring', stiffness: 400, damping: 15 }}
                   >
                     View Full Report
-                  </button>
+                  </motion.button>
                 </motion.div>
               </motion.div>
             </motion.div>

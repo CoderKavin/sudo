@@ -82,33 +82,78 @@ export interface RemediationStep {
   actionLabel?: string;
 }
 
+// Known service security page URLs
+const SECURITY_URLS: Record<string, string> = {
+  google: 'https://myaccount.google.com/security',
+  gmail: 'https://myaccount.google.com/security',
+  facebook: 'https://www.facebook.com/settings?tab=security',
+  instagram: 'https://www.instagram.com/accounts/privacy_and_security/',
+  twitter: 'https://twitter.com/settings/security',
+  linkedin: 'https://www.linkedin.com/psettings/security',
+  apple: 'https://appleid.apple.com/account/manage',
+  microsoft: 'https://account.microsoft.com/security',
+  amazon: 'https://www.amazon.com/gp/css/homepage.html',
+  dropbox: 'https://www.dropbox.com/account/security',
+  spotify: 'https://www.spotify.com/account/security/',
+  netflix: 'https://www.netflix.com/account',
+  paypal: 'https://www.paypal.com/myaccount/settings/security',
+  github: 'https://github.com/settings/security',
+  steam: 'https://store.steampowered.com/account/',
+  discord: 'https://discord.com/channels/@me',
+  adobe: 'https://account.adobe.com/security',
+  yahoo: 'https://login.yahoo.com/account/security',
+  lastpass: 'https://lastpass.com/vault/',
+  myfitnesspal: 'https://www.myfitnesspal.com/account/change_password',
+  canva: 'https://www.canva.com/settings/account',
+};
+
+function getSecurityUrl(breachName: string): string | undefined {
+  const lower = breachName.toLowerCase();
+  for (const [key, url] of Object.entries(SECURITY_URLS)) {
+    if (lower.includes(key)) return url;
+  }
+  return undefined;
+}
+
 export function getBreachRemediationSteps(breachName: string, dataTypes: string[]): RemediationStep[] {
   const steps: RemediationStep[] = [];
   const lower = dataTypes.map((d) => d.toLowerCase()).join(' ');
   const id = (s: string) => `${breachName}-${s}`.replace(/\s+/g, '-').toLowerCase();
+  const securityUrl = getSecurityUrl(breachName);
 
-  if (lower.includes('password')) {
+  if (lower.includes('password') || lower.includes('encrypted password vault')) {
     steps.push({
       id: id('change-password'),
       label: `Change your ${breachName} password`,
-      description: 'Use a unique, strong password (16+ chars). Never reuse passwords across services.',
+      description: 'Use a unique, strong password (16+ chars with mixed case, numbers, and symbols). Never reuse passwords.',
       priority: 'critical',
-      actionUrl: `https://www.google.com/search?q=${encodeURIComponent(breachName)}+change+password`,
-      actionLabel: 'Find password reset page',
+      actionUrl: securityUrl ?? `https://www.google.com/search?q=${encodeURIComponent(breachName)}+change+password`,
+      actionLabel: securityUrl ? 'Go to security settings' : 'Find password reset page',
     });
     steps.push({
       id: id('check-reuse'),
-      label: 'Check for password reuse',
-      description: 'If you used the same password elsewhere, change those accounts too. Consider a password manager.',
+      label: 'Check for password reuse across all accounts',
+      description: 'If you used this password elsewhere, change those accounts immediately. Use a password manager like 1Password, Bitwarden, or iCloud Keychain.',
       priority: 'critical',
+      actionUrl: 'https://bitwarden.com/download/',
+      actionLabel: 'Get a password manager',
     });
     steps.push({
       id: id('enable-2fa'),
-      label: 'Enable two-factor authentication',
-      description: 'Use an authenticator app (not SMS) for the strongest protection.',
+      label: 'Enable two-factor authentication (2FA)',
+      description: 'Use an authenticator app (Google Authenticator, Authy) instead of SMS. Hardware keys like YubiKey are even more secure.',
       priority: 'high',
-      actionUrl: `https://www.google.com/search?q=${encodeURIComponent(breachName)}+enable+two+factor+authentication`,
-      actionLabel: 'Find 2FA settings',
+      actionUrl: securityUrl ?? `https://www.google.com/search?q=${encodeURIComponent(breachName)}+enable+2FA`,
+      actionLabel: securityUrl ? 'Go to 2FA settings' : 'Find 2FA settings',
+    });
+  }
+
+  if (lower.includes('encrypted password vault')) {
+    steps.push({
+      id: id('change-master'),
+      label: 'Change your master password immediately',
+      description: 'Your encrypted vault could be brute-forced. Change your master password and rotate ALL stored passwords, starting with financial accounts.',
+      priority: 'critical',
     });
   }
 
@@ -116,48 +161,84 @@ export function getBreachRemediationSteps(breachName: string, dataTypes: string[
     steps.push({
       id: id('phishing-watch'),
       label: 'Watch for phishing attempts',
-      description: 'Attackers may send targeted phishing emails pretending to be this service. Never click suspicious links.',
+      description: 'Attackers may send targeted emails pretending to be this service. Never click suspicious links. Verify sender addresses carefully.',
       priority: 'high',
     });
   }
 
-  if (lower.includes('credit card') || lower.includes('financial') || lower.includes('bank')) {
+  if (lower.includes('credit card') || lower.includes('financial') || lower.includes('bank') || lower.includes('payment')) {
     steps.push({
       id: id('monitor-bank'),
-      label: 'Monitor bank statements',
-      description: 'Check for unauthorized charges over the next 90 days. Set up transaction alerts with your bank.',
+      label: 'Monitor bank & credit card statements',
+      description: 'Check for unauthorized charges daily for at least 90 days. Set up real-time transaction alerts with your bank.',
       priority: 'critical',
     });
     steps.push({
       id: id('freeze-card'),
-      label: 'Consider freezing your card',
-      description: 'If the breach is recent, temporarily freeze the exposed card and request a replacement.',
+      label: 'Freeze or replace the exposed card',
+      description: 'Contact your bank to freeze the card and request a replacement with a new number.',
       priority: 'high',
+    });
+    steps.push({
+      id: id('credit-monitoring'),
+      label: 'Sign up for credit monitoring',
+      description: 'Use a free service like Credit Karma to get alerts about new accounts opened in your name.',
+      priority: 'high',
+      actionUrl: 'https://www.creditkarma.com/',
+      actionLabel: 'Set up free monitoring',
     });
   }
 
   if (lower.includes('social security') || lower.includes('ssn')) {
     steps.push({
       id: id('freeze-credit'),
-      label: 'Freeze your credit immediately',
-      description: 'Place a security freeze with Equifax, Experian, and TransUnion to prevent identity theft.',
+      label: 'Freeze your credit at all three bureaus',
+      description: 'Place a security freeze with Equifax, Experian, and TransUnion to prevent anyone from opening credit in your name.',
       priority: 'critical',
       actionUrl: 'https://www.usa.gov/credit-freeze',
-      actionLabel: 'Learn how to freeze credit',
+      actionLabel: 'Freeze your credit (free)',
     });
     steps.push({
       id: id('fraud-alert'),
-      label: 'Set up a fraud alert',
-      description: 'Contact any one bureau to place a fraud alert — they notify the others automatically.',
+      label: 'Set up an extended fraud alert',
+      description: 'File for a 7-year extended fraud alert. Contact any one bureau — they notify the others automatically.',
       priority: 'critical',
+    });
+    steps.push({
+      id: id('irs-pin'),
+      label: 'Get an IRS Identity Protection PIN',
+      description: 'Prevent tax fraud by getting an IP PIN from the IRS.',
+      priority: 'high',
+      actionUrl: 'https://www.irs.gov/identity-theft-fraud-scams/get-an-identity-protection-pin',
+      actionLabel: 'Get IRS IP PIN',
     });
   }
 
   if (lower.includes('phone')) {
     steps.push({
       id: id('sim-lock'),
-      label: 'Set up SIM lock / port protection',
-      description: 'Contact your carrier to add a PIN or port-out protection to prevent SIM swapping.',
+      label: 'Set up SIM lock / port-out protection',
+      description: 'Contact your carrier to add a PIN and enable port-out protection to prevent SIM swapping attacks.',
+      priority: 'high',
+    });
+  }
+
+  if (lower.includes('date of birth') || lower.includes('dob')) {
+    steps.push({
+      id: id('identity-monitoring'),
+      label: 'Sign up for identity theft monitoring',
+      description: 'Your date of birth combined with other data makes identity theft possible. Monitor for accounts opened in your name.',
+      priority: 'high',
+      actionUrl: 'https://www.identitytheft.gov/',
+      actionLabel: 'Report identity theft',
+    });
+  }
+
+  if (lower.includes('security question')) {
+    steps.push({
+      id: id('change-questions'),
+      label: 'Change security questions on all accounts',
+      description: 'Use random answers (not real ones) and store them in a password manager.',
       priority: 'high',
     });
   }
@@ -165,9 +246,11 @@ export function getBreachRemediationSteps(breachName: string, dataTypes: string[
   if (lower.includes('address') || lower.includes('physical')) {
     steps.push({
       id: id('mail-monitoring'),
-      label: 'Monitor physical mail',
-      description: 'Watch for unfamiliar mail, pre-approved credit offers, or signs of identity theft.',
+      label: 'Monitor physical mail for fraud',
+      description: 'Watch for unfamiliar mail or notices about accounts you didn\'t open. Set up USPS Informed Delivery.',
       priority: 'medium',
+      actionUrl: 'https://informeddelivery.usps.com/',
+      actionLabel: 'Set up Informed Delivery',
     });
   }
 
@@ -175,7 +258,7 @@ export function getBreachRemediationSteps(breachName: string, dataTypes: string[
     steps.push({
       id: id('report-id'),
       label: 'Report compromised ID to issuing authority',
-      description: 'Contact the relevant government agency to flag the compromised document and request a replacement.',
+      description: 'Contact the relevant government agency to flag the document and request a replacement.',
       priority: 'critical',
     });
   }
@@ -183,11 +266,11 @@ export function getBreachRemediationSteps(breachName: string, dataTypes: string[
   // Always add a general review step
   steps.push({
     id: id('review-security'),
-    label: 'Review account security settings',
-    description: `Check ${breachName}'s security settings for unrecognized sessions, connected apps, or backup emails.`,
+    label: `Review ${breachName} account security`,
+    description: 'Check for unrecognized sessions, connected apps, backup emails, and recovery phone numbers.',
     priority: 'medium',
-    actionUrl: `https://www.google.com/search?q=${encodeURIComponent(breachName)}+account+security+settings`,
-    actionLabel: 'Find security settings',
+    actionUrl: securityUrl ?? `https://www.google.com/search?q=${encodeURIComponent(breachName)}+security+settings`,
+    actionLabel: securityUrl ? 'Go to security settings' : 'Find security settings',
   });
 
   return steps;

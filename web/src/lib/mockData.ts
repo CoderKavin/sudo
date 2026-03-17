@@ -16,6 +16,7 @@ export interface KnownSubscription {
   frequency: 'monthly' | 'yearly';
   iconLetter: string;
   color: string;
+  subscriptionType?: 'paid' | 'free_trial' | 'freemium';
 }
 
 export interface KnownBreach {
@@ -29,6 +30,7 @@ export interface KnownBreach {
 export interface DataBrokerEntry {
   name: string;
   url: string;
+  optOutUrl: string | null;
   dataTypes: string[];
 }
 
@@ -297,41 +299,41 @@ export const KNOWN_BREACHES: KnownBreach[] = [
 // 25+ real data brokers
 // ---------------------------------------------------------------------------
 export const DATA_BROKERS: DataBrokerEntry[] = [
-  { name: 'Spokeo', url: 'https://www.spokeo.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Social profiles'] },
-  { name: 'WhitePages', url: 'https://www.whitepages.com', dataTypes: ['Name', 'Address', 'Phone', 'Age', 'Relatives'] },
-  { name: 'BeenVerified', url: 'https://www.beenverified.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Criminal records'] },
-  { name: 'PeopleFinder', url: 'https://www.peoplefinder.com', dataTypes: ['Name', 'Address', 'Phone', 'Email'] },
-  { name: 'Intelius', url: 'https://www.intelius.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Background checks'] },
-  { name: 'TruePeopleSearch', url: 'https://www.truepeoplesearch.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Relatives'] },
-  { name: 'FastPeopleSearch', url: 'https://www.fastpeoplesearch.com', dataTypes: ['Name', 'Address', 'Phone', 'Age'] },
-  { name: 'USSearch', url: 'https://www.ussearch.com', dataTypes: ['Name', 'Address', 'Phone', 'Criminal records'] },
-  { name: 'PeopleLooker', url: 'https://www.peoplelooker.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Social profiles'] },
-  { name: 'Radaris', url: 'https://radaris.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Court records'] },
-  { name: 'ThatsThem', url: 'https://thatsthem.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'IP address'] },
-  { name: 'Pipl', url: 'https://pipl.com', dataTypes: ['Name', 'Email', 'Phone', 'Social profiles', 'Photos'] },
-  { name: 'ZabaSearch', url: 'https://www.zabasearch.com', dataTypes: ['Name', 'Address', 'Phone', 'Age'] },
-  { name: 'MyLife', url: 'https://www.mylife.com', dataTypes: ['Name', 'Address', 'Phone', 'Reputation score'] },
-  { name: 'Instant Checkmate', url: 'https://www.instantcheckmate.com', dataTypes: ['Name', 'Address', 'Phone', 'Criminal records', 'Social profiles'] },
-  { name: 'TruthFinder', url: 'https://www.truthfinder.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Criminal records'] },
-  { name: 'Nuwber', url: 'https://nuwber.com', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Relatives'] },
-  { name: 'Addresses.com', url: 'https://www.addresses.com', dataTypes: ['Name', 'Address', 'Phone'] },
-  { name: 'AnyWho', url: 'https://www.anywho.com', dataTypes: ['Name', 'Address', 'Phone'] },
-  { name: 'PublicRecords360', url: 'https://www.publicrecords360.com', dataTypes: ['Name', 'Address', 'Phone', 'Court records'] },
-  { name: 'Acxiom', url: 'https://www.acxiom.com', dataTypes: ['Name', 'Address', 'Demographics', 'Purchase behavior'] },
-  { name: 'LexisNexis', url: 'https://www.lexisnexis.com', dataTypes: ['Name', 'Address', 'Financial records', 'Court records'] },
-  { name: 'CoreLogic', url: 'https://www.corelogic.com', dataTypes: ['Name', 'Address', 'Property records', 'Financial data'] },
-  { name: 'Epsilon', url: 'https://www.epsilon.com', dataTypes: ['Name', 'Email', 'Purchase history', 'Demographics'] },
-  { name: 'Oracle Data Cloud', url: 'https://www.oracle.com/data-cloud', dataTypes: ['Name', 'Email', 'Browsing behavior', 'Purchase data'] },
-  { name: 'Clearview AI', url: 'https://www.clearview.ai', dataTypes: ['Facial recognition data', 'Photos', 'Social profiles'] },
+  { name: 'Spokeo', url: 'https://www.spokeo.com', optOutUrl: 'https://www.spokeo.com/optout', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Social profiles'] },
+  { name: 'WhitePages', url: 'https://www.whitepages.com', optOutUrl: 'https://www.whitepages.com/suppression-requests', dataTypes: ['Name', 'Address', 'Phone', 'Age', 'Relatives'] },
+  { name: 'BeenVerified', url: 'https://www.beenverified.com', optOutUrl: 'https://www.beenverified.com/app/optout/search', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Criminal records'] },
+  { name: 'PeopleFinder', url: 'https://www.peoplefinder.com', optOutUrl: 'https://www.peoplefinder.com/optout.php', dataTypes: ['Name', 'Address', 'Phone', 'Email'] },
+  { name: 'Intelius', url: 'https://www.intelius.com', optOutUrl: 'https://www.intelius.com/opt-out/submit/', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Background checks'] },
+  { name: 'TruePeopleSearch', url: 'https://www.truepeoplesearch.com', optOutUrl: 'https://www.truepeoplesearch.com/removal', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Relatives'] },
+  { name: 'FastPeopleSearch', url: 'https://www.fastpeoplesearch.com', optOutUrl: 'https://www.fastpeoplesearch.com/removal', dataTypes: ['Name', 'Address', 'Phone', 'Age'] },
+  { name: 'USSearch', url: 'https://www.ussearch.com', optOutUrl: 'https://www.ussearch.com/opt-out/submit/', dataTypes: ['Name', 'Address', 'Phone', 'Criminal records'] },
+  { name: 'PeopleLooker', url: 'https://www.peoplelooker.com', optOutUrl: 'https://www.peoplelooker.com/f/optout/search', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Social profiles'] },
+  { name: 'Radaris', url: 'https://radaris.com', optOutUrl: 'https://radaris.com/control/privacy', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Court records'] },
+  { name: 'ThatsThem', url: 'https://thatsthem.com', optOutUrl: 'https://thatsthem.com/optout', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'IP address'] },
+  { name: 'Pipl', url: 'https://pipl.com', optOutUrl: null, dataTypes: ['Name', 'Email', 'Phone', 'Social profiles', 'Photos'] },
+  { name: 'ZabaSearch', url: 'https://www.zabasearch.com', optOutUrl: 'https://www.zabasearch.com/privacy.php', dataTypes: ['Name', 'Address', 'Phone', 'Age'] },
+  { name: 'MyLife', url: 'https://www.mylife.com', optOutUrl: 'https://www.mylife.com/privacy-policy#optout', dataTypes: ['Name', 'Address', 'Phone', 'Reputation score'] },
+  { name: 'Instant Checkmate', url: 'https://www.instantcheckmate.com', optOutUrl: 'https://www.instantcheckmate.com/opt-out/', dataTypes: ['Name', 'Address', 'Phone', 'Criminal records', 'Social profiles'] },
+  { name: 'TruthFinder', url: 'https://www.truthfinder.com', optOutUrl: 'https://www.truthfinder.com/opt-out/', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Criminal records'] },
+  { name: 'Nuwber', url: 'https://nuwber.com', optOutUrl: 'https://nuwber.com/removal/link', dataTypes: ['Name', 'Address', 'Phone', 'Email', 'Relatives'] },
+  { name: 'Addresses.com', url: 'https://www.addresses.com', optOutUrl: null, dataTypes: ['Name', 'Address', 'Phone'] },
+  { name: 'AnyWho', url: 'https://www.anywho.com', optOutUrl: null, dataTypes: ['Name', 'Address', 'Phone'] },
+  { name: 'PublicRecords360', url: 'https://www.publicrecords360.com', optOutUrl: null, dataTypes: ['Name', 'Address', 'Phone', 'Court records'] },
+  { name: 'Acxiom', url: 'https://www.acxiom.com', optOutUrl: 'https://isapps.acxiom.com/optout/optout.aspx', dataTypes: ['Name', 'Address', 'Demographics', 'Purchase behavior'] },
+  { name: 'LexisNexis', url: 'https://www.lexisnexis.com', optOutUrl: null, dataTypes: ['Name', 'Address', 'Financial records', 'Court records'] },
+  { name: 'CoreLogic', url: 'https://www.corelogic.com', optOutUrl: null, dataTypes: ['Name', 'Address', 'Property records', 'Financial data'] },
+  { name: 'Epsilon', url: 'https://www.epsilon.com', optOutUrl: null, dataTypes: ['Name', 'Email', 'Purchase history', 'Demographics'] },
+  { name: 'Oracle Data Cloud', url: 'https://www.oracle.com/data-cloud', optOutUrl: null, dataTypes: ['Name', 'Email', 'Browsing behavior', 'Purchase data'] },
+  { name: 'Clearview AI', url: 'https://www.clearview.ai', optOutUrl: null, dataTypes: ['Facial recognition data', 'Photos', 'Social profiles'] },
 ];
 
 // ---------------------------------------------------------------------------
 // Scanning stage messages
 // ---------------------------------------------------------------------------
 export const SCAN_STAGES: { message: string; progressEnd: number }[] = [
-  { message: 'Connecting...', progressEnd: 10 },
-  { message: 'Checking breach databases...', progressEnd: 45 },
-  { message: 'Cross-referencing known breaches...', progressEnd: 65 },
+  { message: 'Connecting...', progressEnd: 8 },
+  { message: 'Checking breach databases...', progressEnd: 35 },
+  { message: 'Cross-referencing known breaches...', progressEnd: 60 },
   { message: 'Scanning data brokers...', progressEnd: 85 },
   { message: 'Calculating privacy score...', progressEnd: 100 },
 ];
