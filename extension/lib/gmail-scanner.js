@@ -215,10 +215,11 @@ const FAILED_PATTERNS = [
 // Renewal / successful charge signals
 const CHARGE_PATTERNS = [
   /receipt/i, /invoice/i, /payment.?(confirm|success|receiv|process)/i,
-  /charged?\b/i, /billing/i, /renewal/i, /renewed/i,
-  /your.?(plan|subscription|membership)/i,
+  /charged?\b/i, /billing.?(statement|confirm|summary)/i, /renewal/i, /renewed/i,
+  /your.?(subscription|membership).?(renew|receipt|invoice|payment)/i,
   /thank.?you.?for.?(your )?payment/i,
-  /order.?confirm/i,
+  /recurring.?(payment|charge|billing)/i,
+  /subscription.?(receipt|invoice|payment|confirm|renew)/i,
 ];
 
 /**
@@ -410,10 +411,13 @@ export async function scanForSubscriptions(token, onProgress) {
     // Need at least 2 events to be considered a subscription
     if (events.length < 2) continue;
 
-    // Separate event types
-    const charges = events.filter((e) => e.type === 'charge' || e.type === 'other');
+    // Separate event types — only count actual charge-pattern matches, not 'other'
+    const charges = events.filter((e) => e.type === 'charge');
     const cancellations = events.filter((e) => e.type === 'cancelled');
     const failures = events.filter((e) => e.type === 'failed');
+
+    // Need at least 2 actual charge events (not just any billing keyword email)
+    if (charges.length < 2) continue;
 
     // Determine amount (most consistent charge amount)
     const { amount, currency } = detectAmount(charges);
@@ -421,6 +425,9 @@ export async function scanForSubscriptions(token, onProgress) {
     // Determine frequency from charge dates
     const chargeDates = charges.map((e) => e.date);
     let frequency = detectFrequency(chargeDates);
+
+    // Skip if no recognizable recurring frequency (likely one-time purchases)
+    if (frequency === 'unknown' && charges.length < 4) continue;
 
     // Normalize frequency for UI — adjust amount proportionally
     let displayAmount = amount;

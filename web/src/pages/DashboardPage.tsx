@@ -1641,9 +1641,9 @@ export default function DashboardPage() {
                 );
               })()}
 
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {filteredSubscriptions.length === 0 && (
-                  <div className="py-16 text-center text-[15px] text-white/45">No subscriptions match your filters</div>
+                  <div className="col-span-full py-16 text-center text-[15px] text-white/45">No subscriptions match your filters</div>
                 )}
                 {filteredSubscriptions.map((sub, i) => (
                     <motion.div

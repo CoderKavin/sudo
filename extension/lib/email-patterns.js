@@ -159,9 +159,9 @@ export const ACCOUNT_PATTERNS = {
 
 export const SUBSCRIPTION_PATTERNS = {
   searchQuery: [
-    'subject:("receipt" OR "invoice" OR "payment" OR "subscription" OR',
-    '"billing" OR "your order" OR "payment confirmation" OR "charge" OR',
-    '"renewal" OR "monthly" OR "annual" OR "plan" OR "membership")',
+    'subject:("receipt" OR "invoice" OR "payment confirmation" OR "subscription" OR',
+    '"billing statement" OR "recurring" OR "charge" OR',
+    '"renewal" OR "membership renewal" OR "your plan")',
     'newer_than:1y',
   ].join(' '),
 
