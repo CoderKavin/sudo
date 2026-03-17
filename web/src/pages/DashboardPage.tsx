@@ -360,12 +360,6 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <motion.button className="btn-sm" onClick={() => setPasswordCheckerOpen(true)} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>
-            <span className="flex items-center gap-1.5">
-              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-              Check Password
-            </span>
-          </motion.button>
           <motion.button className="btn-sm" onClick={handleExportPdf} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>PDF Report</motion.button>
           <motion.button className="btn-sm" onClick={handleExportReport} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>JSON</motion.button>
           <motion.button className="btn-sm" onClick={() => navigate('/scan')} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>+ Add Email</motion.button>
@@ -551,10 +545,10 @@ export default function DashboardPage() {
               <motion.button
                 key={tab}
                 onClick={() => { setActiveTab(tab); setFilter(null); setSearch(''); }}
-                className={`relative flex-1 rounded-xl px-4 py-2.5 text-[13px] font-medium transition-colors duration-300 ${
+                className={`relative flex-1 rounded-xl px-4 py-2.5 text-[13px] font-medium transition-all duration-300 ${
                   isActive
-                    ? 'bg-white/[0.06] text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)] border border-white/[0.08]'
-                    : 'text-white/50 hover:text-white/40 border border-transparent'
+                    ? 'bg-[var(--accent)]/15 text-white border border-[var(--accent)]/30 shadow-[0_0_16px_rgba(124,106,239,0.15)]'
+                    : 'text-white/40 hover:text-white/55 border border-transparent'
                 }`}
                 whileHover={!isActive ? { backgroundColor: 'rgba(255,255,255,0.03)' } : {}}
                 whileTap={{ scale: 0.97 }}
@@ -2132,11 +2126,11 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* ─── Fixed bottom-left: Monitoring & Alerts ─── */}
-      <div className="fixed bottom-5 left-5 z-40 flex flex-col gap-2">
+      {/* ─── Fixed bottom-left: Quick tools ─── */}
+      <div className="fixed bottom-5 left-5 z-40 flex items-center gap-2">
         <button
           onClick={() => store.setMonitoringEnabled(!store.monitoringEnabled)}
-          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl"
+          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
           style={{
             background: store.monitoringEnabled ? 'rgba(124,106,239,0.15)' : 'rgba(255,255,255,0.04)',
             border: `1px solid ${store.monitoringEnabled ? 'rgba(124,106,239,0.3)' : 'rgba(255,255,255,0.08)'}`,
@@ -2149,11 +2143,11 @@ export default function DashboardPage() {
             )}
             <span className={`relative inline-flex h-2 w-2 rounded-full ${store.monitoringEnabled ? 'bg-[#a78bfa]' : 'bg-white/20'}`} />
           </span>
-          {store.monitoringEnabled ? 'Monitoring On' : 'Monitoring Off'}
+          {store.monitoringEnabled ? 'Monitoring' : 'Monitor'}
         </button>
         <button
           onClick={() => store.setNotificationsEnabled(!store.notificationsEnabled)}
-          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl"
+          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
           style={{
             background: store.notificationsEnabled ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
             border: `1px solid ${store.notificationsEnabled ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
@@ -2163,7 +2157,21 @@ export default function DashboardPage() {
           <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
           </svg>
-          {store.notificationsEnabled ? 'Alerts On' : 'Alerts Off'}
+          Alerts
+        </button>
+        <button
+          onClick={() => setPasswordCheckerOpen(true)}
+          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
+          style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            color: 'rgba(255,255,255,0.4)',
+          }}
+        >
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+          Password Check
         </button>
       </div>
 
