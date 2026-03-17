@@ -14,7 +14,6 @@ import type {
   DataBrokerEntry,
 } from './mockData';
 
-import type { DiscoveredAccount, TrackedSubscription } from './extensionBridge';
 
 // ---------------------------------------------------------------------------
 // Types returned by the scanner
@@ -44,8 +43,6 @@ export interface ScannedDataBroker {
 export interface ScanResults {
   breaches: ScannedBreach[];
   dataBrokers: ScannedDataBroker[];
-  discoveredAccounts: DiscoveredAccount[];
-  trackedSubscriptions: TrackedSubscription[];
   privacyScore: number;
   breachSource: 'real' | 'mock';
 }
@@ -185,87 +182,9 @@ export async function simulateScan(
 
   const { total: privacyScore } = calculateScoreBreakdown(breaches, dataBrokers);
 
-  // --- Discovered accounts: deterministic mock based on email ---
-  const MOCK_ACCOUNTS = [
-    { name: 'Netflix', domain: 'netflix.com', category: 'Streaming' },
-    { name: 'Spotify', domain: 'spotify.com', category: 'Music' },
-    { name: 'Amazon', domain: 'amazon.com', category: 'Shopping' },
-    { name: 'Twitter / X', domain: 'x.com', category: 'Social' },
-    { name: 'Facebook', domain: 'facebook.com', category: 'Social' },
-    { name: 'Instagram', domain: 'instagram.com', category: 'Social' },
-    { name: 'LinkedIn', domain: 'linkedin.com', category: 'Professional' },
-    { name: 'GitHub', domain: 'github.com', category: 'Developer' },
-    { name: 'Dropbox', domain: 'dropbox.com', category: 'Cloud Storage' },
-    { name: 'Discord', domain: 'discord.com', category: 'Social' },
-    { name: 'Reddit', domain: 'reddit.com', category: 'Social' },
-    { name: 'Twitch', domain: 'twitch.tv', category: 'Streaming' },
-    { name: 'Adobe', domain: 'adobe.com', category: 'Software' },
-    { name: 'Notion', domain: 'notion.so', category: 'Productivity' },
-    { name: 'Slack', domain: 'slack.com', category: 'Communication' },
-    { name: 'Uber', domain: 'uber.com', category: 'Transport' },
-    { name: 'DoorDash', domain: 'doordash.com', category: 'Food' },
-    { name: 'Pinterest', domain: 'pinterest.com', category: 'Social' },
-    { name: 'Canva', domain: 'canva.com', category: 'Design' },
-    { name: 'Steam', domain: 'steampowered.com', category: 'Gaming' },
-  ];
-
-  const accountCount = 6 + Math.floor(rng() * 10);
-  const selectedAccounts = pickN(MOCK_ACCOUNTS, accountCount, rng);
-  const discoveredAccounts: DiscoveredAccount[] = selectedAccounts.map((a, i) => {
-    const daysAgo = Math.floor(rng() * 1500) + 30;
-    const lastDaysAgo = Math.floor(rng() * daysAgo);
-    return {
-      id: `acct-${seed}-${i}`,
-      name: a.name,
-      domain: a.domain,
-      category: a.category,
-      firstSeen: new Date(Date.now() - daysAgo * 86400000).toISOString().split('T')[0],
-      lastActivity: new Date(Date.now() - lastDaysAgo * 86400000).toISOString().split('T')[0],
-    };
-  });
-
-  // --- Tracked subscriptions: deterministic mock ---
-  const MOCK_SUBS = [
-    { name: 'Netflix', domain: 'netflix.com', amount: 15.49, frequency: 'monthly' as const },
-    { name: 'Spotify Premium', domain: 'spotify.com', amount: 10.99, frequency: 'monthly' as const },
-    { name: 'Amazon Prime', domain: 'amazon.com', amount: 139, frequency: 'yearly' as const },
-    { name: 'iCloud+', domain: 'apple.com', amount: 2.99, frequency: 'monthly' as const },
-    { name: 'YouTube Premium', domain: 'youtube.com', amount: 13.99, frequency: 'monthly' as const },
-    { name: 'Adobe Creative Cloud', domain: 'adobe.com', amount: 54.99, frequency: 'monthly' as const },
-    { name: 'ChatGPT Plus', domain: 'openai.com', amount: 20, frequency: 'monthly' as const },
-    { name: 'Discord Nitro', domain: 'discord.com', amount: 9.99, frequency: 'monthly' as const },
-    { name: 'Notion Pro', domain: 'notion.so', amount: 10, frequency: 'monthly' as const },
-    { name: 'GitHub Pro', domain: 'github.com', amount: 4, frequency: 'monthly' as const },
-    { name: 'Hulu', domain: 'hulu.com', amount: 17.99, frequency: 'monthly' as const },
-    { name: 'Xbox Game Pass', domain: 'xbox.com', amount: 16.99, frequency: 'monthly' as const },
-  ];
-
-  const subCount = 3 + Math.floor(rng() * 6);
-  const selectedSubs = pickN(MOCK_SUBS, subCount, rng);
-  const statuses: TrackedSubscription['status'][] = ['active', 'active', 'active', 'active', 'cancelled', 'failed'];
-  const trackedSubscriptions: TrackedSubscription[] = selectedSubs.map((s, i) => {
-    const status = statuses[Math.floor(rng() * statuses.length)] || 'active';
-    const chargeCount = 2 + Math.floor(rng() * 24);
-    return {
-      id: `sub-${seed}-${i}`,
-      name: s.name,
-      domain: s.domain,
-      amount: s.amount,
-      currency: 'USD',
-      frequency: s.frequency,
-      lastCharged: new Date(Date.now() - Math.floor(rng() * 30) * 86400000).toISOString().split('T')[0],
-      active: status === 'active',
-      status,
-      emailCount: 1 + Math.floor(rng() * 20),
-      chargeCount,
-    };
-  });
-
   return {
     breaches,
     dataBrokers,
-    discoveredAccounts,
-    trackedSubscriptions,
     privacyScore,
     breachSource,
   };

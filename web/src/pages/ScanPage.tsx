@@ -47,8 +47,6 @@ export default function ScanPage() {
     setStep('scanning');
     let allBreaches = store.breaches;
     let allBrokers = store.dataBrokers;
-    let allAccounts = store.discoveredAccounts;
-    let allSubs = store.trackedSubscriptions;
     let lastScore = 0;
     for (const emailEntry of localEmails) {
       setCurrentScanEmail(emailEntry.email);
@@ -60,8 +58,6 @@ export default function ScanPage() {
       });
       allBreaches = [...allBreaches, ...results.breaches];
       allBrokers = [...allBrokers, ...results.dataBrokers];
-      allAccounts = [...allAccounts, ...results.discoveredAccounts];
-      allSubs = [...allSubs, ...results.trackedSubscriptions];
       lastScore = results.privacyScore;
       emailEntry.breachCount = results.breaches.length;
       emailEntry.lastScanned = new Date().toISOString();
@@ -69,8 +65,6 @@ export default function ScanPage() {
     }
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
-    store.setDiscoveredAccounts(allAccounts);
-    store.setTrackedSubscriptions(allSubs);
     const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
     store.addScoreSnapshot({
       date: new Date().toISOString(),
