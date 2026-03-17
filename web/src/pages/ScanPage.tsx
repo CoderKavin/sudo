@@ -423,7 +423,7 @@ export default function ScanPage() {
                       transition={{ delay: 0.3 + i * 0.1 }}
                     >
                       <div className="text-[2.5rem] font-bold tracking-tight tabular-nums" style={{ color: stat.color }}>
-                        {'prefix' in stat && stat.prefix}{stat.value}
+                        {stat.value}
                       </div>
                       <div className="text-[13px] text-white/50">{stat.label}</div>
                     </motion.div>
