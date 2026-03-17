@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import useStore from '../store/useStore';
-import { simulateScan } from '../lib/scanner';
+import { simulateScan, calculateScoreBreakdown } from '../lib/scanner';
 import type { ConnectedEmail } from '../store/useStore';
 
 type Step = 'connect' | 'scanning' | 'complete';
@@ -65,15 +65,15 @@ export default function ScanPage() {
     }
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
-    store.updatePrivacyScore(lastScore);
+    const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
     store.addScoreSnapshot({
       date: new Date().toISOString(),
-      score: lastScore,
+      score: finalBreakdown.total,
       breachCount: allBreaches.length,
       brokerCount: allBrokers.length,
     });
     store.setScanComplete();
-    setSummaryStats({ breaches: allBreaches.length, brokers: allBrokers.length, privacyScore: lastScore });
+    setSummaryStats({ breaches: allBreaches.length, brokers: allBrokers.length, privacyScore: finalBreakdown.total });
     setStep('complete');
   }, [localEmails, store]);
 

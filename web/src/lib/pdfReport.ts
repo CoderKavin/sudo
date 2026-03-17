@@ -47,8 +47,34 @@ const SEV_COLORS: Record<string, [number, number, number]> = {
   low: C.blue,
 };
 
-export function generatePrivacyReport(data: ReportData): void {
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+async function loadInterFont(doc: jsPDF): Promise<void> {
+  try {
+    const [regular, bold] = await Promise.all([
+      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjQ.ttf').then(r => r.arrayBuffer()),
+      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuDyfAZ9hjQ.ttf').then(r => r.arrayBuffer()),
+    ]);
+    doc.addFileToVFS('Inter-Regular.ttf', arrayBufferToBase64(regular));
+    doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
+    doc.addFileToVFS('Inter-Bold.ttf', arrayBufferToBase64(bold));
+    doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+  } catch {
+    // Fallback to helvetica if font loading fails
+  }
+}
+
+export async function generatePrivacyReport(data: ReportData): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  await loadInterFont(doc);
+  const fontFamily = doc.getFontList()['Inter'] ? 'Inter' : 'helvetica';
   const pw = doc.internal.pageSize.getWidth();
   const ph = doc.internal.pageSize.getHeight();
   const m = 18; // margin
@@ -85,7 +111,7 @@ export function generatePrivacyReport(data: ReportData): void {
   const sectionTitle = (title: string, count?: number) => {
     checkBreak(25);
     doc.setFontSize(13);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...C.white);
     const label = count !== undefined ? `${title} (${count})` : title;
     doc.text(label, m, y);
@@ -100,7 +126,7 @@ export function generatePrivacyReport(data: ReportData): void {
     doc.setFillColor(color[0], color[1], color[2]);
     doc.roundedRect(x, yPos - 3, tw, 5, 1.5, 1.5, 'F');
     doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.text(text, x + 2, yPos);
     return tw + 2;
   };
@@ -129,7 +155,7 @@ export function generatePrivacyReport(data: ReportData): void {
   // Brand / Logo text
   y = 55;
   doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontFamily, 'normal');
   doc.setTextColor(...C.purple);
   doc.text('VANISH', m + 2, y);
   doc.setTextColor(...C.muted);
@@ -138,7 +164,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
   // Main title
   doc.setFontSize(36);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontFamily, 'bold');
   doc.setTextColor(...C.white);
   doc.text('Privacy', m, y);
   y += 14;
@@ -153,7 +179,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
   // Meta info
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont(fontFamily, 'normal');
   doc.setTextColor(...C.muted);
   doc.text(`Generated ${formatDate(new Date())}`, m, y);
   y += 6;
@@ -173,7 +199,7 @@ export function generatePrivacyReport(data: ReportData): void {
   // Score number
   const scoreColor = data.privacyScore > 70 ? C.green : data.privacyScore > 40 ? C.orange : C.red;
   doc.setFontSize(48);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontFamily, 'bold');
   doc.setTextColor(...scoreColor);
   doc.text(`${data.privacyScore}`, m + 18, y + 34);
 
@@ -185,7 +211,7 @@ export function generatePrivacyReport(data: ReportData): void {
   // Labels
   doc.setFontSize(12);
   doc.setTextColor(...C.white);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont(fontFamily, 'bold');
   doc.text('PRIVACY SCORE', m + 18, y + 44);
 
   const riskLevel = data.privacyScore > 70 ? 'LOW RISK' : data.privacyScore > 40 ? 'MEDIUM RISK' : 'HIGH RISK';
@@ -204,12 +230,12 @@ export function generatePrivacyReport(data: ReportData): void {
   for (let i = 0; i < statsRight.length; i++) {
     const sy = y + 14 + i * 13;
     doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...statsRight[i].color);
     doc.text(`${statsRight[i].value}`, statX, sy);
 
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(fontFamily, 'normal');
     doc.setTextColor(...C.muted);
     doc.text(statsRight[i].label, statX + 18, sy);
   }
@@ -236,12 +262,12 @@ export function generatePrivacyReport(data: ReportData): void {
     doc.roundedRect(bx, y, boxW, 24, 3, 3, 'F');
 
     doc.setFontSize(20);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...allStats[i].color);
     doc.text(allStats[i].value, bx + boxW / 2, y + 12, { align: 'center' });
 
     doc.setFontSize(5.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(fontFamily, 'normal');
     doc.setTextColor(...C.muted);
     doc.text(allStats[i].label, bx + boxW / 2, y + 19, { align: 'center' });
   }
@@ -306,7 +332,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
       // Name
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(fontFamily, 'bold');
       doc.setTextColor(...C.white);
       doc.text(breach.name, m + 5, y + 7);
 
@@ -315,7 +341,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
       // Details line
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(fontFamily, 'normal');
       doc.setTextColor(...C.muted);
       doc.text(`${breach.email}  ·  ${breach.date}`, m + 5, y + 12);
 
@@ -346,7 +372,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
       // Source
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(fontFamily, 'bold');
       doc.setTextColor(...C.purpleLight);
       doc.text(alert.source, m + 5, y + 6.5);
 
@@ -359,7 +385,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
       // Detail
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(fontFamily, 'normal');
       doc.setTextColor(...C.muted);
       const desc = alert.description.length > 90 ? alert.description.slice(0, 87) + '...' : alert.description;
       doc.text(`${alert.email}  ·  ${desc}`, m + 5, y + 12, { maxWidth: cw - 10 });
@@ -378,7 +404,7 @@ export function generatePrivacyReport(data: ReportData): void {
     doc.setFillColor(...C.cardBgLight);
     doc.roundedRect(m, y, cw, 8, 1.5, 1.5, 'F');
     doc.setFontSize(6);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...C.muted);
     doc.text('BROKER', m + 5, y + 5.5);
     doc.text('DATA EXPOSED', m + 65, y + 5.5);
@@ -392,13 +418,13 @@ export function generatePrivacyReport(data: ReportData): void {
 
       // Name
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(fontFamily, 'bold');
       doc.setTextColor(...C.orange);
       doc.text(broker.name, m + 5, y + 6);
 
       // Data types
       doc.setFontSize(6.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(fontFamily, 'normal');
       doc.setTextColor(...C.muted);
       doc.text(broker.dataTypes.slice(0, 4).join(', '), m + 65, y + 6, { maxWidth: cw - 90 });
 
@@ -425,10 +451,10 @@ export function generatePrivacyReport(data: ReportData): void {
     doc.setFillColor(...C.cardBg);
     doc.roundedRect(m, y, cw, 12, 2, 2, 'F');
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(fontFamily, 'normal');
     doc.setTextColor(...C.muted);
     doc.text('Estimated monthly spend', m + 5, y + 8);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(fontFamily, 'bold');
     doc.setTextColor(...C.green);
     doc.text(`$${monthlyTotal.toFixed(2)}/mo`, m + cw - 5, y + 8, { align: 'right' });
     y += 16;
@@ -439,13 +465,13 @@ export function generatePrivacyReport(data: ReportData): void {
       doc.roundedRect(m, y, cw, 9, 1.5, 1.5, 'F');
 
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(fontFamily, 'bold');
       doc.setTextColor(...C.white);
       doc.text(sub.name, m + 5, y + 6);
 
       const curr = sub.currency === 'EUR' ? '€' : sub.currency === 'GBP' ? '£' : '$';
       doc.setTextColor(...C.green);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(fontFamily, 'normal');
       doc.text(`${curr}${sub.amount.toFixed(2)}/${sub.frequency === 'yearly' ? 'yr' : 'mo'}`, m + cw - 5, y + 6, { align: 'right' });
 
       y += 11;
@@ -466,7 +492,7 @@ export function generatePrivacyReport(data: ReportData): void {
 
     // Footer text
     doc.setFontSize(6.5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont(fontFamily, 'normal');
     doc.setTextColor(...C.muted);
     doc.text('VANISH PRIVACY REPORT', m, ph - 10);
     doc.text(`Page ${p} of ${pageCount}`, pw / 2, ph - 10, { align: 'center' });

@@ -28,7 +28,7 @@ function CountUp({ target, delay }: { target: number; delay: number }) {
 }
 import useStore from '../store/useStore';
 import type { ConnectedEmail } from '../store/useStore';
-import { simulateScan } from '../lib/scanner';
+import { simulateScan, calculateScoreBreakdown } from '../lib/scanner';
 // NotificationType used by monitoring.ts
 import {
   isExtensionInstalled,
@@ -51,6 +51,33 @@ import PasswordChecker from '../components/PasswordChecker';
 import ScoreHistory from '../components/ScoreHistory';
 
 type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions';
+
+function DataTypeIcon({ type }: { type: string }) {
+  const t = type.toLowerCase();
+  const cls = "h-3 w-3 shrink-0 opacity-60";
+  if (t.includes('email') || t.includes('mail'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0l-9.75 6.5-9.75-6.5" /></svg>;
+  if (t.includes('phone') || t.includes('mobile'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" /></svg>;
+  if (t.includes('address') || t.includes('location'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
+  if (t.includes('password') || t.includes('hash'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>;
+  if (t.includes('name') || t.includes('username'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0" /></svg>;
+  if (t.includes('social') || t.includes('profile'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197" /></svg>;
+  if (t.includes('photo') || t.includes('image') || t.includes('avatar'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>;
+  if (t.includes('dob') || t.includes('birth') || t.includes('age'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.871c1.355 0 2.697.056 4.024.166C17.155 8.51 18 9.473 18 10.608v2.513M15 8.25v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.379a48.474 48.474 0 00-6-.371c-2.032 0-4.034.126-6 .371m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.169c0 .621-.504 1.125-1.125 1.125H4.125A1.125 1.125 0 013 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 016 13.12M12 8.25a2.25 2.25 0 01-2.25-2.25V3.75" /></svg>;
+  if (t.includes('ssn') || t.includes('social security') || t.includes('ip'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z" /></svg>;
+  if (t.includes('credit') || t.includes('card') || t.includes('financial') || t.includes('payment'))
+    return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" /></svg>;
+  // default: generic data icon
+  return <svg className={cls} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" /></svg>;
+}
 
 const SEV: Record<string, { bg: string; color: string }> = {
   critical: { bg: 'rgba(239,68,68,0.1)', color: '#ef4444' },
@@ -187,8 +214,8 @@ export default function DashboardPage() {
     }
   }, [store]);
 
-  const handleExportPdf = useCallback(() => {
-    generatePrivacyReport({
+  const handleExportPdf = useCallback(async () => {
+    await generatePrivacyReport({
       emails: store.connectedEmails.map((e) => e.email),
       privacyScore: store.privacyScore,
       scoreHistory: store.scoreHistory,
@@ -233,10 +260,10 @@ export default function DashboardPage() {
     store.addEmail(emailEntry);
     store.setBreaches(allBreaches);
     store.setDataBrokers(allBrokers);
-    store.updatePrivacyScore(results.privacyScore);
+    const finalBreakdown = calculateScoreBreakdown(allBreaches, allBrokers);
     store.addScoreSnapshot({
       date: new Date().toISOString(),
-      score: results.privacyScore,
+      score: finalBreakdown.total,
       breachCount: allBreaches.length,
       brokerCount: allBrokers.length,
     });
@@ -319,7 +346,8 @@ export default function DashboardPage() {
     );
   }
 
-  const scoreColor = store.privacyScore > 70 ? '#22c55e' : store.privacyScore > 40 ? '#f97316' : '#ef4444';
+  const currentScore = store.scoreBreakdown.total;
+  const scoreColor = currentScore > 70 ? '#22c55e' : currentScore > 40 ? '#f97316' : '#ef4444';
 
   const handleBrokerRemoval = (brokerId: string) => {
     const broker = store.dataBrokers.find((b) => b.id === brokerId);
@@ -462,7 +490,7 @@ export default function DashboardPage() {
           />
           <div className="relative text-center">
             <div className="text-[3rem] font-bold tracking-tight tabular-nums" style={{ color: scoreColor }}>
-              {store.privacyScore}
+              {currentScore}
             </div>
             <div className="mt-1 text-[13px] text-white/50">Privacy Score</div>
             {/* Sparkline */}
@@ -828,7 +856,7 @@ export default function DashboardPage() {
                   <p className="mt-3 text-[14px] leading-relaxed text-white/50">{breach.description}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {breach.dataTypes.map((dt) => (
-                      <span key={dt} className="tag">{dt}</span>
+                      <span key={dt} className="tag inline-flex items-center gap-1"><DataTypeIcon type={dt} />{dt}</span>
                     ))}
                   </div>
 
@@ -1030,7 +1058,7 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {broker.dataTypes.map((dt) => (
-                    <span key={dt} className="tag">{dt}</span>
+                    <span key={dt} className="tag inline-flex items-center gap-1"><DataTypeIcon type={dt} />{dt}</span>
                   ))}
                 </div>
                 {broker.status === 'found' && (
