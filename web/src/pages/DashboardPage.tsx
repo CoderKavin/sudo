@@ -27,6 +27,8 @@ function CountUp({ target, delay }: { target: number; delay: number }) {
   return <>{value}</>;
 }
 import useStore from '../store/useStore';
+import type { ConnectedEmail } from '../store/useStore';
+import { simulateScan } from '../lib/scanner';
 // NotificationType used by monitoring.ts
 import {
   isExtensionInstalled,
@@ -84,6 +86,14 @@ export default function DashboardPage() {
   const [batchRemovalProgress, setBatchRemovalProgress] = useState<{ current: number; total: number } | null>(null);
   const [passwordCheckerOpen, setPasswordCheckerOpen] = useState(false);
   const [scoreHistoryOpen, setScoreHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeEmail, setActiveEmail] = useState<string | null>(null);
+  const [addEmailOpen, setAddEmailOpen] = useState(false);
+  const [addEmailInput, setAddEmailInput] = useState('');
+  const [addEmailScanning, setAddEmailScanning] = useState(false);
+  const [addEmailProgress, setAddEmailProgress] = useState(0);
+  const [addEmailStage, setAddEmailStage] = useState('');
+  const [addEmailDone, setAddEmailDone] = useState(false);
 
   const handleHudClose = useCallback(() => {
     setHudClosing(true);
@@ -190,13 +200,70 @@ export default function DashboardPage() {
     });
   }, [store]);
 
-  const unresolvedBreaches = store.breaches.filter((b) => !b.resolved).length;
-  const exposedBrokers = store.dataBrokers.filter((b) => b.status === 'found').length;
-  const removingBrokers = store.dataBrokers.filter((b) => b.status === 'removing').length;
-  const removedBrokers = store.dataBrokers.filter((b) => b.status === 'removed').length;
+  const handleAddEmailScan = useCallback(async () => {
+    const email = addEmailInput.trim().toLowerCase();
+    if (!email || !email.includes('@')) return;
+    if (store.connectedEmails.some((e) => e.email === email)) return;
+
+    const domain = email.split('@')[1] || '';
+    const provider: ConnectedEmail['provider'] =
+      domain.includes('gmail') || domain.includes('googlemail') ? 'gmail'
+      : domain.includes('outlook') || domain.includes('hotmail') || domain.includes('live.') || domain.includes('msn.') ? 'outlook'
+      : domain.includes('yahoo') || domain.includes('ymail') || domain.includes('rocketmail') ? 'yahoo'
+      : 'other';
+
+    const emailEntry: ConnectedEmail = {
+      email, provider, connected: true, lastScanned: null, breachCount: 0,
+    };
+
+    setAddEmailScanning(true);
+    setAddEmailProgress(0);
+    setAddEmailStage('Connecting...');
+    setAddEmailDone(false);
+
+    const results = await simulateScan(email, (p, stage) => {
+      setAddEmailProgress(p);
+      setAddEmailStage(stage);
+    });
+
+    const allBreaches = [...store.breaches, ...results.breaches];
+    const allBrokers = [...store.dataBrokers, ...results.dataBrokers];
+    emailEntry.breachCount = results.breaches.length;
+    emailEntry.lastScanned = new Date().toISOString();
+    store.addEmail(emailEntry);
+    store.setBreaches(allBreaches);
+    store.setDataBrokers(allBrokers);
+    store.updatePrivacyScore(results.privacyScore);
+    store.addScoreSnapshot({
+      date: new Date().toISOString(),
+      score: results.privacyScore,
+      breachCount: allBreaches.length,
+      brokerCount: allBrokers.length,
+    });
+
+    setAddEmailScanning(false);
+    setAddEmailDone(true);
+  }, [addEmailInput, store]);
+
+  const closeAddEmail = useCallback(() => {
+    setAddEmailOpen(false);
+    setAddEmailInput('');
+    setAddEmailScanning(false);
+    setAddEmailProgress(0);
+    setAddEmailStage('');
+    setAddEmailDone(false);
+  }, []);
+
+  const scopedBreaches = useMemo(() => activeEmail ? store.breaches.filter((b) => b.email === activeEmail) : store.breaches, [store.breaches, activeEmail]);
+  const scopedBrokers = useMemo(() => activeEmail ? store.dataBrokers.filter((b) => b.email === activeEmail) : store.dataBrokers, [store.dataBrokers, activeEmail]);
+
+  const unresolvedBreaches = scopedBreaches.filter((b) => !b.resolved).length;
+  const exposedBrokers = scopedBrokers.filter((b) => b.status === 'found').length;
+  const removingBrokers = scopedBrokers.filter((b) => b.status === 'removing').length;
+  const removedBrokers = scopedBrokers.filter((b) => b.status === 'removed').length;
 
   const filteredBreaches = useMemo(() => {
-    let list = store.breaches;
+    let list = scopedBreaches;
     if (filter === 'unresolved') list = list.filter((b) => !b.resolved);
     else if (filter === 'resolved') list = list.filter((b) => b.resolved);
     if (search.trim()) {
@@ -204,17 +271,17 @@ export default function DashboardPage() {
       list = list.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
     }
     return list;
-  }, [store.breaches, search, filter]);
+  }, [scopedBreaches, search, filter]);
 
   const filteredBrokers = useMemo(() => {
-    let list = store.dataBrokers;
+    let list = scopedBrokers;
     if (filter === 'found' || filter === 'removing' || filter === 'removed') list = list.filter((b) => b.status === filter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((b) => b.name.toLowerCase().includes(q) || b.email.toLowerCase().includes(q));
     }
     return list;
-  }, [store.dataBrokers, search, filter]);
+  }, [scopedBrokers, search, filter]);
 
   const filteredAccounts = useMemo(() => {
     let list = store.discoveredAccounts;
@@ -353,16 +420,30 @@ export default function DashboardPage() {
         animate={{ opacity: 1, y: 0 }}
         className="mb-10 flex items-center justify-between"
       >
-        <div>
-          <h1 className="text-[1.5rem] font-bold tracking-tight text-white">Your Digital Footprint</h1>
-          <p className="text-[13px] text-white/50">
-            {store.connectedEmails.length} email{store.connectedEmails.length !== 1 ? 's' : ''} scanned
-          </p>
+        <div className="flex items-center gap-3">
+          {(() => {
+            const currentEmail = activeEmail
+              ? store.connectedEmails.find((e) => e.email === activeEmail) ?? store.connectedEmails[0]
+              : store.connectedEmails[0];
+            if (!currentEmail) return null;
+            return (
+              <>
+                <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.04]">
+                  <ProviderLogo provider={currentEmail.provider} size={28} />
+                </span>
+                <div>
+                  <h1 className="text-[1.5rem] font-bold tracking-tight text-white">Your Report</h1>
+                  <p className="text-[12px] text-white/40 flex items-center gap-2">
+                    {currentEmail.email}
+                  </p>
+                </div>
+              </>
+            );
+          })()}
         </div>
         <div className="flex gap-2">
           <motion.button className="btn-sm" onClick={handleExportPdf} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>PDF Report</motion.button>
-          <motion.button className="btn-sm" onClick={handleExportReport} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>JSON</motion.button>
-          <motion.button className="btn-sm" onClick={() => navigate('/scan')} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>+ Add Email</motion.button>
+          <motion.button className="btn-sm" onClick={() => setAddEmailOpen(true)} whileHover={{ scale: 1.05, y: -1 }} whileTap={{ scale: 0.95 }}>+ Add Email</motion.button>
         </div>
       </motion.div>
 
@@ -471,58 +552,74 @@ export default function DashboardPage() {
         </motion.div>
       </motion.div>
 
-      {/* ─── Connected Emails ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+      {/* ─── Password Checker Card ─── */}
+      <motion.button
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
-        className="mb-8"
+        onClick={() => setPasswordCheckerOpen(true)}
+        whileHover={{ scale: 1.01, borderColor: 'rgba(249,115,22,0.25)' }}
+        whileTap={{ scale: 0.99 }}
+        className="mb-10 w-full rounded-2xl px-6 py-4 flex items-center gap-4 text-left cursor-pointer transition-all duration-200"
+        style={{
+          background: 'linear-gradient(135deg, rgba(249,115,22,0.06), rgba(234,179,8,0.04))',
+          border: '1px solid rgba(249,115,22,0.12)',
+        }}
       >
-        <p className="section-label mb-3">Scanning as</p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f97316]/10">
+          <svg className="h-5 w-5 text-[#f97316]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <div className="flex-1">
+          <p className="text-[14px] font-semibold text-white/80">Password Checker</p>
+          <p className="text-[12px] text-white/40">Check if any of your passwords have appeared in known data breaches</p>
+        </div>
+        <svg className="h-5 w-5 text-white/20 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+        </svg>
+      </motion.button>
+
+      {/* ─── Email switcher (multiple accounts) ─── */}
+      {store.connectedEmails.length > 1 && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.08 }}
+          className="mb-6 flex flex-wrap gap-2"
+        >
+          <button
+            onClick={() => setActiveEmail(null)}
+            className={`rounded-lg px-3 py-1.5 text-[12px] font-medium flex items-center gap-1.5 transition-all duration-200 cursor-pointer ${
+              activeEmail === null
+                ? 'bg-[var(--accent)]/15 text-white border border-[var(--accent)]/30'
+                : 'glass text-white/40 hover:text-white/55 border border-transparent'
+            }`}
+          >
+            All Accounts
+          </button>
           {store.connectedEmails.map((e) => {
-            const providerColors: Record<string, string> = {
-              gmail: '#ea4335',
-              outlook: '#0078d4',
-              yahoo: '#6001d2',
-              other: '#a78bfa',
-            };
-            const providerLabel = e.provider === 'other' ? e.email.split('@')[1] : e.provider;
+            const isActive = activeEmail === e.email;
             return (
-              <span key={e.email} className="glass rounded-xl px-4 py-2.5 text-[13px] font-medium text-white/60 flex items-center gap-3">
-                <span
-                  className="flex h-7 w-7 items-center justify-center rounded-lg text-[10px] font-bold uppercase tracking-wider"
-                  style={{
-                    background: `${providerColors[e.provider]}15`,
-                    color: providerColors[e.provider],
-                  }}
-                >
-                  {providerLabel.slice(0, 2)}
-                </span>
-                <span className="flex flex-col">
-                  <span className="text-[13px] text-white/70">{e.email}</span>
-                  <span className="text-[10px] text-white/35 flex items-center gap-2">
-                    {providerLabel}
-                    {e.lastScanned && ` · Scanned ${new Date(e.lastScanned).toLocaleDateString()}`}
-                    {e.breachCount > 0 && (
-                      <span className="text-[#ef4444] font-semibold">{e.breachCount} breach{e.breachCount > 1 ? 'es' : ''}</span>
-                    )}
-                  </span>
-                </span>
-                <button
-                  onClick={() => { store.removeEmail(e.email); }}
-                  className="ml-auto h-5 w-5 rounded-full flex items-center justify-center text-white/30 hover:text-white/60 hover:bg-white/10 transition-all"
-                  title="Disconnect email"
-                >
-                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </span>
+              <button
+                key={e.email}
+                onClick={() => setActiveEmail(isActive ? null : e.email)}
+                className={`rounded-lg px-3 py-1.5 text-[12px] font-medium flex items-center gap-2 transition-all duration-200 cursor-pointer ${
+                  isActive
+                    ? 'bg-[var(--accent)]/15 text-white border border-[var(--accent)]/30'
+                    : 'glass text-white/40 hover:text-white/55 border border-transparent'
+                }`}
+              >
+                <ProviderLogo provider={e.provider} size={14} />
+                {e.email}
+                {e.breachCount > 0 && (
+                  <span className="text-[10px] font-semibold text-[#ef4444]">{e.breachCount}</span>
+                )}
+              </button>
             );
           })}
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* ─── Tabs ─── */}
       <motion.div
@@ -668,8 +765,20 @@ export default function DashboardPage() {
       {activeTab === 'breaches' && (
         <div className="space-y-3">
           {filteredBreaches.length === 0 && (
-            <div className="py-16 text-center text-[15px] text-white/45">
-              {search.trim() ? 'No breaches match your search' : 'No known breaches found — nice!'}
+            <div className="py-20 text-center">
+              {search.trim() ? (
+                <p className="text-[14px] text-white/40">No breaches match your search</p>
+              ) : (
+                <>
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#22c55e]/10">
+                    <svg className="h-7 w-7 text-[#22c55e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[17px] font-semibold text-white">No breaches found</h3>
+                  <p className="mt-1 text-[13px] text-white/40">Your email hasn't appeared in any known data breaches.</p>
+                </>
+              )}
             </div>
           )}
           {filteredBreaches
@@ -1049,14 +1158,24 @@ export default function DashboardPage() {
             </motion.div>
           ) : store.discoveredAccounts.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <h3 className="text-[17px] font-semibold text-white">
-                {extScanning ? 'Scanning your inbox...' : 'No accounts discovered yet'}
-              </h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                {extScanning
-                  ? 'This may take a minute depending on inbox size.'
-                  : `Connected as ${store.extensionEmail}. Run a scan to find your accounts.`}
-              </p>
+              {extScanning ? (
+                <>
+                  <h3 className="text-[17px] font-semibold text-white">Scanning your inbox...</h3>
+                  <p className="mx-auto mt-2 max-w-sm text-[13px] text-white/40">This may take a minute depending on inbox size.</p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+                    <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[17px] font-semibold text-white">No accounts discovered</h3>
+                  <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
+                    Connected as {store.extensionEmail}. Run a scan to find your accounts.
+                  </p>
+                </>
+              )}
               {extError && <p className="mt-3 text-[13px] text-[#ef4444]">{extError}</p>}
               {!extScanning && (
                 <div className="mt-5 flex items-center justify-center gap-3">
@@ -1217,14 +1336,24 @@ export default function DashboardPage() {
             </motion.div>
           ) : store.trackedSubscriptions.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-20 text-center">
-              <h3 className="text-[17px] font-semibold text-white">
-                {extScanning ? 'Scanning for subscriptions...' : 'No subscriptions found yet'}
-              </h3>
-              <p className="mx-auto mt-2 max-w-sm text-[14px] leading-relaxed text-white/50">
-                {extScanning
-                  ? 'Analyzing billing emails from the past year.'
-                  : `Connected as ${store.extensionEmail}. Run a scan to find recurring charges.`}
-              </p>
+              {extScanning ? (
+                <>
+                  <h3 className="text-[17px] font-semibold text-white">Scanning for subscriptions...</h3>
+                  <p className="mx-auto mt-2 max-w-sm text-[13px] text-white/40">Analyzing billing emails from the past year.</p>
+                </>
+              ) : (
+                <>
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/[0.04]">
+                    <svg className="h-7 w-7 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-[17px] font-semibold text-white">No subscriptions found</h3>
+                  <p className="mx-auto mt-1 max-w-sm text-[13px] text-white/40">
+                    Connect the Chrome extension and scan your inbox to discover recurring charges.
+                  </p>
+                </>
+              )}
               {!extScanning && (
                 <button className="btn-primary mt-5" onClick={handleExtensionScan}>Scan Inbox</button>
               )}
@@ -2126,54 +2255,270 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
-      {/* ─── Fixed bottom-left: Quick tools ─── */}
-      <div className="fixed bottom-5 left-5 z-40 flex items-center gap-2">
-        <button
-          onClick={() => store.setMonitoringEnabled(!store.monitoringEnabled)}
-          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
-          style={{
-            background: store.monitoringEnabled ? 'rgba(124,106,239,0.15)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${store.monitoringEnabled ? 'rgba(124,106,239,0.3)' : 'rgba(255,255,255,0.08)'}`,
-            color: store.monitoringEnabled ? '#a78bfa' : 'rgba(255,255,255,0.4)',
-          }}
-        >
-          <span className="relative flex h-2 w-2">
-            {store.monitoringEnabled && (
-              <span className="absolute inset-0 rounded-full bg-[#a78bfa] animate-ping opacity-40" />
-            )}
-            <span className={`relative inline-flex h-2 w-2 rounded-full ${store.monitoringEnabled ? 'bg-[#a78bfa]' : 'bg-white/20'}`} />
-          </span>
-          {store.monitoringEnabled ? 'Monitoring' : 'Monitor'}
-        </button>
-        <button
-          onClick={() => store.setNotificationsEnabled(!store.notificationsEnabled)}
-          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
-          style={{
-            background: store.notificationsEnabled ? 'rgba(59,130,246,0.15)' : 'rgba(255,255,255,0.04)',
-            border: `1px solid ${store.notificationsEnabled ? 'rgba(59,130,246,0.3)' : 'rgba(255,255,255,0.08)'}`,
-            color: store.notificationsEnabled ? '#3b82f6' : 'rgba(255,255,255,0.4)',
-          }}
-        >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-          Alerts
-        </button>
-        <button
-          onClick={() => setPasswordCheckerOpen(true)}
-          className="flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-medium transition-all duration-200 backdrop-blur-xl cursor-pointer"
-          style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: 'rgba(255,255,255,0.4)',
-          }}
-        >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-          </svg>
-          Password Check
-        </button>
-      </div>
+      {/* ─── Fixed bottom-left: Settings gear ─── */}
+      <button
+        onClick={() => setSettingsOpen(true)}
+        className="fixed bottom-5 left-5 z-40 flex h-10 w-10 items-center justify-center rounded-full backdrop-blur-xl cursor-pointer transition-all duration-200 hover:bg-white/[0.08]"
+        style={{
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid rgba(255,255,255,0.08)',
+        }}
+        title="Settings"
+      >
+        <svg className="h-4.5 w-4.5 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.007.38.138.75.43.99l1.004.828c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.38-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      </button>
+
+      {/* ─── Settings Modal ─── */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={() => setSettingsOpen(false)} />
+            <motion.div
+              className="relative w-full max-w-sm rounded-2xl p-6"
+              style={{
+                background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(18,18,24,0.98))',
+                border: '1px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
+              }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5">
+                  <svg className="h-4 w-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a6.759 6.759 0 010 .255c-.007.38.138.75.43.99l1.004.828c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.38-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  <h3 className="text-[14px] font-semibold text-white/90">Settings</h3>
+                </div>
+                <button onClick={() => setSettingsOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.04] text-white/40 hover:text-white/70 hover:bg-white/[0.08] transition-all text-sm leading-none cursor-pointer">&times;</button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Continuous Monitoring */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#a78bfa]/10">
+                      <svg className="h-4 w-4 text-[#a78bfa]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium text-white/70">Continuous Monitoring</p>
+                      <p className="text-[11px] text-white/35">
+                        {store.monitoringEnabled
+                          ? `Every ${store.monitoringInterval}h${store.darkWebLastChecked ? ` · Last: ${new Date(store.darkWebLastChecked).toLocaleDateString()}` : ''}`
+                          : 'Auto-scan for new dark web exposures'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => store.setMonitoringEnabled(!store.monitoringEnabled)}
+                    className="relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer shrink-0"
+                    style={{
+                      background: store.monitoringEnabled ? 'rgba(124,106,239,0.5)' : 'rgba(255,255,255,0.08)',
+                      border: `1px solid ${store.monitoringEnabled ? 'rgba(124,106,239,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform duration-200"
+                      style={{
+                        background: store.monitoringEnabled ? '#a78bfa' : 'rgba(255,255,255,0.3)',
+                        transform: store.monitoringEnabled ? 'translateX(20px)' : 'translateX(0)',
+                        boxShadow: store.monitoringEnabled ? '0 0 8px rgba(167,139,250,0.5)' : 'none',
+                      }}
+                    />
+                  </button>
+                </div>
+
+                <div className="h-px bg-white/[0.06]" />
+
+                {/* Email Alerts */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#3b82f6]/10">
+                      <svg className="h-4 w-4 text-[#3b82f6]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-medium text-white/70">Email Alerts</p>
+                      <p className="text-[11px] text-white/35">
+                        {store.notificationsEnabled
+                          ? `Sending to ${store.notificationEmail ?? 'not set'}`
+                          : 'Get notified of new threats'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => store.setNotificationsEnabled(!store.notificationsEnabled)}
+                    className="relative h-6 w-11 rounded-full transition-colors duration-200 cursor-pointer shrink-0"
+                    style={{
+                      background: store.notificationsEnabled ? 'rgba(59,130,246,0.5)' : 'rgba(255,255,255,0.08)',
+                      border: `1px solid ${store.notificationsEnabled ? 'rgba(59,130,246,0.6)' : 'rgba(255,255,255,0.1)'}`,
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 left-0.5 h-4 w-4 rounded-full transition-transform duration-200"
+                      style={{
+                        background: store.notificationsEnabled ? '#3b82f6' : 'rgba(255,255,255,0.3)',
+                        transform: store.notificationsEnabled ? 'translateX(20px)' : 'translateX(0)',
+                        boxShadow: store.notificationsEnabled ? '0 0 8px rgba(59,130,246,0.5)' : 'none',
+                      }}
+                    />
+                  </button>
+                </div>
+
+                <div className="h-px bg-white/[0.06]" />
+
+                {/* Clear All Data */}
+                <button
+                  onClick={() => { if (confirm('This will delete all scan data. Are you sure?')) { store.clearAllData(); setSettingsOpen(false); } }}
+                  className="w-full flex items-center gap-3 rounded-xl px-1 py-2 text-left transition-colors hover:bg-[#ef4444]/[0.04] cursor-pointer"
+                >
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#ef4444]/10">
+                    <svg className="h-4 w-4 text-[#ef4444]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[13px] font-medium text-[#ef4444]/70">Clear All Data</p>
+                    <p className="text-[11px] text-white/35">Delete all scan results and settings</p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── Add Email Modal ─── */}
+      <AnimatePresence>
+        {addEmailOpen && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" onClick={!addEmailScanning ? closeAddEmail : undefined} />
+            <motion.div
+              className="relative w-full max-w-sm rounded-2xl p-6"
+              style={{
+                background: 'linear-gradient(145deg, rgba(30,30,40,0.95), rgba(18,18,24,0.98))',
+                border: '1px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 25px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05) inset',
+              }}
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            >
+              <div className="flex items-center justify-between mb-5">
+                <div className="flex items-center gap-2.5">
+                  <svg className="h-4 w-4 text-white/40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                  <h3 className="text-[14px] font-semibold text-white/90">Add Email Account</h3>
+                </div>
+                {!addEmailScanning && (
+                  <button onClick={closeAddEmail} className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.04] text-white/40 hover:text-white/70 hover:bg-white/[0.08] transition-all text-sm leading-none cursor-pointer">&times;</button>
+                )}
+              </div>
+
+              {!addEmailScanning && !addEmailDone && (
+                <div>
+                  <div className="flex gap-2">
+                    <input
+                      type="email"
+                      value={addEmailInput}
+                      onChange={(e) => setAddEmailInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddEmailScan()}
+                      placeholder="you@example.com"
+                      className="flex-1 rounded-xl px-4 py-2.5 text-[13px] text-white placeholder-white/30 outline-none"
+                      style={{
+                        background: 'rgba(255,255,255,0.04)',
+                        border: '1px solid rgba(255,255,255,0.08)',
+                      }}
+                      autoFocus
+                    />
+                    <motion.button
+                      onClick={handleAddEmailScan}
+                      whileHover={{ scale: 1.03 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="rounded-xl px-4 py-2.5 text-[13px] font-medium cursor-pointer"
+                      style={{
+                        background: 'linear-gradient(135deg, var(--accent), #8b5cf6)',
+                        color: '#fff',
+                      }}
+                    >
+                      Scan
+                    </motion.button>
+                  </div>
+                  {store.connectedEmails.length > 0 && (
+                    <p className="mt-3 text-[11px] text-white/30">
+                      {store.connectedEmails.length} email{store.connectedEmails.length > 1 ? 's' : ''} already connected
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {addEmailScanning && (
+                <div className="space-y-4">
+                  <p className="text-[13px] text-white/60">{addEmailStage}</p>
+                  <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                    <motion.div
+                      className="h-full rounded-full"
+                      style={{ background: 'linear-gradient(90deg, var(--accent), #8b5cf6)' }}
+                      initial={{ width: '0%' }}
+                      animate={{ width: `${addEmailProgress}%` }}
+                      transition={{ duration: 0.3 }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-white/30 text-center">{Math.round(addEmailProgress)}%</p>
+                </div>
+              )}
+
+              {addEmailDone && (
+                <div className="text-center space-y-4">
+                  <div className="flex justify-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#22c55e]/10">
+                      <svg className="h-6 w-6 text-[#22c55e]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-medium text-white/80">Scan Complete</p>
+                    <p className="text-[12px] text-white/40 mt-1">{addEmailInput} has been added and scanned</p>
+                  </div>
+                  <motion.button
+                    onClick={closeAddEmail}
+                    whileHover={{ scale: 1.03 }}
+                    whileTap={{ scale: 0.97 }}
+                    className="w-full rounded-xl py-2.5 text-[13px] font-medium cursor-pointer"
+                    style={{
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      color: 'rgba(255,255,255,0.7)',
+                    }}
+                  >
+                    Done
+                  </motion.button>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── Modals ─── */}
       <PasswordChecker open={passwordCheckerOpen} onClose={() => setPasswordCheckerOpen(false)} />
@@ -2195,4 +2540,23 @@ function formatDate(d: string): string {
   } catch {
     return d;
   }
+}
+
+const PROVIDER_LOGOS: Record<string, string> = {
+  gmail: '/gmail.png',
+  yahoo: '/yahoo.png',
+  outlook: '/outlook.png',
+};
+
+function ProviderLogo({ provider, size = 18 }: { provider: string; size?: number }) {
+  const src = PROVIDER_LOGOS[provider];
+  if (src) {
+    return <img src={src} alt={provider} width={size} height={size} className="rounded-sm object-contain" />;
+  }
+  // 'other' — generic envelope
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="1.5">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+    </svg>
+  );
 }
