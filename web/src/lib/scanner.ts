@@ -62,24 +62,34 @@ export function calculateScoreBreakdown(
   breaches: ScannedBreach[],
   brokers: ScannedDataBroker[],
 ): ScoreBreakdown {
-  let breachPenalty = 0;
-  let resolvedBonus = 0;
+  // ── Breach penalty: diminishing returns so the score doesn't immediately
+  //    flatline to 5 with a handful of breaches.
+  //    Each unresolved breach adds weight, but the total penalty is capped at 45
+  //    using a logarithmic curve: penalty = 45 * (1 - e^(-rawWeight / 40))
+  //    This means: 1 critical = ~12 pts, 5 critical = ~33 pts, 20+ = ~44 pts
+  let rawBreachWeight = 0;
+  let rawResolvedWeight = 0;
 
   for (const b of breaches) {
-    const penalty = b.severity === 'critical' ? 12
+    const weight = b.severity === 'critical' ? 12
       : b.severity === 'high' ? 8
       : b.severity === 'medium' ? 5 : 2;
     if (b.resolved) {
-      resolvedBonus += Math.round(penalty * 0.7); // recovering 70% for resolved
+      rawResolvedWeight += weight;
     } else {
-      breachPenalty += penalty;
+      rawBreachWeight += weight;
     }
   }
 
+  const breachPenalty = Math.round(45 * (1 - Math.exp(-rawBreachWeight / 40)));
+  const resolvedBonus = Math.round(15 * (1 - Math.exp(-rawResolvedWeight / 30)));
+
+  // ── Broker penalty: same diminishing curve, capped at 40.
+  //    5 brokers = ~10 pts, 20 brokers = ~25 pts, 50+ = ~37 pts
   const activeBrokers = brokers.filter(b => b.status === 'found').length;
   const removedBrokers = brokers.filter(b => b.status === 'removed').length;
-  const brokerPenalty = Math.round(activeBrokers * 1.5);
-  const removedBrokerBonus = Math.round(removedBrokers * 1);
+  const brokerPenalty = Math.round(25 * (1 - Math.exp(-activeBrokers / 30)));
+  const removedBrokerBonus = Math.round(10 * (1 - Math.exp(-removedBrokers / 10)));
 
   const total = Math.max(5, Math.min(100, Math.round(
     100 - breachPenalty - brokerPenalty + resolvedBonus + removedBrokerBonus

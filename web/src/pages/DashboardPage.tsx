@@ -283,6 +283,7 @@ export default function DashboardPage() {
 
   const scopedBreaches = useMemo(() => activeEmail ? store.breaches.filter((b) => b.email === activeEmail) : store.breaches, [store.breaches, activeEmail]);
   const scopedBrokers = useMemo(() => activeEmail ? store.dataBrokers.filter((b) => b.email === activeEmail) : store.dataBrokers, [store.dataBrokers, activeEmail]);
+  const scopedBreakdown = useMemo(() => calculateScoreBreakdown(scopedBreaches, scopedBrokers), [scopedBreaches, scopedBrokers]);
 
   const unresolvedBreaches = scopedBreaches.filter((b) => !b.resolved).length;
   const exposedBrokers = scopedBrokers.filter((b) => b.status === 'found').length;
@@ -346,7 +347,7 @@ export default function DashboardPage() {
     );
   }
 
-  const currentScore = store.scoreBreakdown.total;
+  const currentScore = scopedBreakdown.total;
   const scoreColor = currentScore > 70 ? '#22c55e' : currentScore > 40 ? '#f97316' : '#ef4444';
 
   const handleBrokerRemoval = (brokerId: string) => {
@@ -463,6 +464,12 @@ export default function DashboardPage() {
                   <h1 className="text-[1.5rem] font-bold tracking-tight text-white">Your Report</h1>
                   <p className="text-[12px] text-white/40 flex items-center gap-2">
                     {currentEmail.email}
+                    <span className="inline-flex items-center gap-1 rounded-md bg-[#22c55e]/[0.08] border border-[#22c55e]/15 px-1.5 py-0.5 text-[9px] font-semibold text-[#22c55e]/60 uppercase tracking-wider">
+                      <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                      </svg>
+                      Local only
+                    </span>
                   </p>
                 </div>
               </>
@@ -809,9 +816,9 @@ export default function DashboardPage() {
               )}
             </div>
           )}
+          <div className="grid gap-3 sm:grid-cols-2">
           {filteredBreaches
             .sort((a, b) => {
-              // Unresolved first, then by severity
               if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
               const order: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
               return order[a.severity] - order[b.severity];
@@ -819,53 +826,172 @@ export default function DashboardPage() {
             .map((breach, i) => {
               const sev = SEV[breach.severity];
               const isExpanded = expandedBreach === breach.id;
+              const steps = getBreachRemediationSteps(breach.name, breach.dataTypes);
+              const completedSteps = store.remediationProgress[breach.id] || [];
+              const progress = steps.length > 0 ? Math.round((completedSteps.length / steps.length) * 100) : 0;
+              const hasPasswords = breach.dataTypes.some(d => d.toLowerCase().includes('password'));
+              const hasFinancial = breach.dataTypes.some(d => /credit|card|bank|financial|payment/i.test(d));
+              const riskLevel = breach.severity === 'critical' ? 'Immediate action required' : breach.severity === 'high' ? 'Action recommended' : breach.severity === 'medium' ? 'Review suggested' : 'Low risk';
+
               return (
                 <motion.div
                   key={breach.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ scale: 1.01, borderColor: 'rgba(255,255,255,0.08)', y: -2 }}
-                  transition={{ delay: i * 0.03, type: 'spring', stiffness: 300, damping: 20 }}
-                  className={`glass-card ${breach.resolved ? 'opacity-50' : ''}`}
+                  transition={{ delay: i * 0.02, type: 'spring', stiffness: 300, damping: 20 }}
+                  className={`group relative overflow-hidden rounded-2xl border transition-colors ${
+                    breach.resolved
+                      ? 'border-white/[0.04] bg-white/[0.01] opacity-60'
+                      : 'border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]'
+                  } ${isExpanded ? 'sm:col-span-2' : ''}`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-[15px] font-semibold text-white">{breach.name}</h3>
+                  {/* Severity accent strip */}
+                  <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${sev.color}, transparent)` }} />
+
+                  <div className="p-5">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2.5">
+                          {/* Severity icon */}
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl" style={{ backgroundColor: sev.bg }}>
+                            {breach.severity === 'critical' || breach.severity === 'high' ? (
+                              <svg className="h-4.5 w-4.5" style={{ color: sev.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                              </svg>
+                            ) : (
+                              <svg className="h-4.5 w-4.5" style={{ color: sev.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                              </svg>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="text-[15px] font-semibold text-white truncate">{breach.name}</h3>
+                            <p className="text-[11px] text-white/40">{breach.email} &middot; {breach.date}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
                         <span
-                          className="badge capitalize"
+                          className="rounded-lg px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
                           style={{ backgroundColor: sev.bg, color: sev.color }}
                         >
                           {breach.severity}
                         </span>
                         {breach.resolved && (
-                          <span className="badge bg-[#22c55e]/10 text-[#22c55e]">Resolved</span>
+                          <span className="rounded-lg bg-[#22c55e]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#22c55e]">
+                            Resolved
+                          </span>
                         )}
                       </div>
-                      <p className="mt-1 text-[12px] text-white/45">{breach.email} · {breach.date}</p>
                     </div>
+
+                    {/* Risk context banner */}
                     {!breach.resolved && (
-                      <button
-                        className="btn-sm shrink-0 !text-[12px]"
-                        onClick={() => handleResolve(breach.id)}
-                      >
-                        {isExpanded ? 'Close' : 'Take Action'}
-                      </button>
+                      <div className="mt-3 flex items-center gap-2 rounded-lg px-3 py-2" style={{ backgroundColor: `${sev.color}08`, borderLeft: `2px solid ${sev.color}40` }}>
+                        <svg className="h-3.5 w-3.5 shrink-0" style={{ color: sev.color }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span className="text-[11px] font-medium" style={{ color: `${sev.color}cc` }}>
+                          {riskLevel}
+                          {hasPasswords && ' — your password was exposed'}
+                          {hasFinancial && ' — financial data at risk'}
+                        </span>
+                      </div>
                     )}
-                  </div>
-                  <p className="mt-3 text-[14px] leading-relaxed text-white/50">{breach.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-1.5">
-                    {breach.dataTypes.map((dt) => (
-                      <span key={dt} className="tag inline-flex items-center gap-1"><DataTypeIcon type={dt} />{dt}</span>
-                    ))}
+
+                    {/* Exposed data types */}
+                    <div className="mt-3">
+                      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/30">Exposed Data</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {breach.dataTypes.map((dt) => {
+                          const isHighRisk = /password|credit|card|ssn|social security|financial|bank/i.test(dt);
+                          return (
+                            <span
+                              key={dt}
+                              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium ${
+                                isHighRisk
+                                  ? 'bg-[#ef4444]/10 text-[#ef4444]/80 border border-[#ef4444]/15'
+                                  : 'bg-white/[0.04] text-white/50 border border-white/[0.06]'
+                              }`}
+                            >
+                              <DataTypeIcon type={dt} />
+                              {dt}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Remediation progress (when steps started but not expanded) */}
+                    {!breach.resolved && completedSteps.length > 0 && !isExpanded && (
+                      <div className="mt-3 flex items-center gap-2">
+                        <div className="flex-1 h-1 rounded-full bg-white/[0.06] overflow-hidden">
+                          <div className="h-full rounded-full bg-[#22c55e]/60 transition-all" style={{ width: `${progress}%` }} />
+                        </div>
+                        <span className="text-[10px] font-medium text-white/40 tabular-nums">{completedSteps.length}/{steps.length} steps</span>
+                      </div>
+                    )}
+
+                    {/* Action buttons */}
+                    {!breach.resolved && (
+                      <div className="mt-4 flex items-center gap-2">
+                        <button
+                          className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold transition-all"
+                          style={{
+                            backgroundColor: `${sev.color}15`,
+                            color: sev.color,
+                            border: `1px solid ${sev.color}25`,
+                          }}
+                          onClick={() => handleResolve(breach.id)}
+                        >
+                          {isExpanded ? (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Close
+                            </>
+                          ) : (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                              </svg>
+                              {completedSteps.length > 0 ? 'Continue Fix' : 'Secure Now'}
+                            </>
+                          )}
+                        </button>
+                        {steps.some(s => s.actionUrl) && !isExpanded && (
+                          <button
+                            className="flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-white/50 transition-all hover:border-white/[0.12] hover:text-white/70"
+                            onClick={() => {
+                              const firstAction = steps.find(s => s.actionUrl);
+                              if (firstAction?.actionUrl) window.open(firstAction.actionUrl, '_blank', 'noopener,noreferrer');
+                            }}
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                            </svg>
+                            Change Password
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Resolved state */}
+                    {breach.resolved && (
+                      <div className="mt-4 flex items-center gap-2 text-[12px] text-[#22c55e]/60">
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        You've addressed this breach
+                      </div>
+                    )}
                   </div>
 
                   {/* Expanded remediation panel */}
                   <AnimatePresence>
                     {isExpanded && !breach.resolved && (() => {
-                      const steps = getBreachRemediationSteps(breach.name, breach.dataTypes);
-                      const completedSteps = store.remediationProgress[breach.id] || [];
-                      const progress = steps.length > 0 ? Math.round((completedSteps.length / steps.length) * 100) : 0;
                       return (
                         <motion.div
                           initial={{ opacity: 0, height: 0 }}
@@ -873,39 +999,47 @@ export default function DashboardPage() {
                           exit={{ opacity: 0, height: 0 }}
                           className="overflow-hidden"
                         >
-                          <div className="mt-5 rounded-2xl bg-white/[0.03] border border-white/[0.06] p-5">
+                          <div className="border-t border-white/[0.06] px-5 pb-5 pt-4">
                             {/* Progress bar */}
                             <div className="mb-4 flex items-center gap-3">
-                              <div className="flex-1 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                              <div className="flex-1 h-2 rounded-full bg-white/[0.06] overflow-hidden">
                                 <motion.div
-                                  className="h-full rounded-full bg-[var(--accent)]"
+                                  className="h-full rounded-full"
+                                  style={{ background: progress === 100 ? '#22c55e' : `linear-gradient(90deg, ${sev.color}, ${sev.color}80)` }}
                                   initial={{ width: 0 }}
                                   animate={{ width: `${progress}%` }}
                                   transition={{ duration: 0.5 }}
                                 />
                               </div>
-                              <span className="text-[11px] font-medium text-white/50 tabular-nums">{completedSteps.length}/{steps.length}</span>
+                              <span className="text-[12px] font-semibold tabular-nums" style={{ color: progress === 100 ? '#22c55e' : 'rgba(255,255,255,0.5)' }}>
+                                {progress}%
+                              </span>
                             </div>
 
-                            <p className="text-[12px] font-semibold uppercase tracking-wider text-white/50 mb-3">
-                              Remediation Checklist
+                            <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40 mb-3">
+                              Security Checklist
                             </p>
-                            <ul className="space-y-2">
+                            <ul className="space-y-1">
                               {steps.map((step) => {
                                 const done = completedSteps.includes(step.id);
                                 const prioColors: Record<string, string> = {
-                                  critical: 'text-[#ef4444]', high: 'text-[#f97316]',
-                                  medium: 'text-[#eab308]', low: 'text-[#3b82f6]',
+                                  critical: '#ef4444', high: '#f97316',
+                                  medium: '#eab308', low: '#3b82f6',
                                 };
+                                const prioColor = prioColors[step.priority] || '#3b82f6';
                                 return (
-                                  <li key={step.id} className="group">
-                                    <div className="flex items-start gap-3">
+                                  <li key={step.id} className="group/step">
+                                    <div
+                                      className={`flex items-start gap-3 rounded-xl p-3 transition-colors ${
+                                        done ? 'bg-[#22c55e]/[0.03]' : 'hover:bg-white/[0.02]'
+                                      }`}
+                                    >
                                       <button
                                         onClick={() => store.toggleRemediationStep(breach.id, step.id)}
-                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all ${
+                                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-all ${
                                           done
-                                            ? 'bg-[#22c55e]/20 border-[#22c55e]/30 text-[#22c55e]'
-                                            : 'border-white/10 text-transparent hover:border-white/20'
+                                            ? 'bg-[#22c55e] border-[#22c55e] text-white'
+                                            : 'border-white/15 text-transparent hover:border-white/30'
                                         }`}
                                       >
                                         {done && (
@@ -916,20 +1050,26 @@ export default function DashboardPage() {
                                       </button>
                                       <div className={`flex-1 ${done ? 'opacity-40' : ''}`}>
                                         <div className="flex items-center gap-2">
-                                          <span className={`text-[13px] font-medium ${done ? 'line-through text-white/50' : 'text-white/70'}`}>
+                                          <span className={`text-[13px] font-medium ${done ? 'line-through text-white/40' : 'text-white/80'}`}>
                                             {step.label}
                                           </span>
-                                          <span className={`text-[9px] font-semibold uppercase ${prioColors[step.priority]}`}>
+                                          <span
+                                            className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                                            style={{ backgroundColor: `${prioColor}15`, color: prioColor }}
+                                          >
                                             {step.priority}
                                           </span>
                                         </div>
-                                        <p className="mt-0.5 text-[12px] text-white/45">{step.description}</p>
+                                        <p className="mt-0.5 text-[12px] text-white/40 leading-relaxed">{step.description}</p>
                                         {step.actionUrl && !done && (
                                           <button
-                                            className="btn-sm mt-2 !py-1 !px-2.5 !text-[10px]"
+                                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-white/60 transition-all hover:border-white/[0.15] hover:text-white/80"
                                             onClick={() => window.open(step.actionUrl, '_blank', 'noopener,noreferrer')}
                                           >
-                                            {step.actionLabel || 'Take Action'} →
+                                            {step.actionLabel || 'Take Action'}
+                                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12h15m0 0l-6.75-6.75M19.5 12l-6.75 6.75" />
+                                            </svg>
                                           </button>
                                         )}
                                       </div>
@@ -938,12 +1078,15 @@ export default function DashboardPage() {
                                 );
                               })}
                             </ul>
-                            <div className="mt-5 flex gap-2">
+                            <div className="mt-4 flex gap-2">
                               <button
-                                className="btn-sm !bg-[#22c55e]/10 !text-[#22c55e] !border-[#22c55e]/20"
+                                className="flex items-center gap-1.5 rounded-xl bg-[#22c55e]/10 border border-[#22c55e]/20 px-4 py-2.5 text-[12px] font-semibold text-[#22c55e] transition-all hover:bg-[#22c55e]/15 disabled:opacity-30 disabled:cursor-not-allowed"
                                 onClick={() => confirmResolve(breach.id)}
                                 disabled={completedSteps.length === 0}
                               >
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
                                 {progress === 100 ? 'All Done — Mark Resolved' : 'Mark as Resolved'}
                               </button>
                             </div>
@@ -955,6 +1098,7 @@ export default function DashboardPage() {
                 </motion.div>
               );
             })}
+          </div>
         </div>
       )}
 
@@ -1703,25 +1847,62 @@ export default function DashboardPage() {
                   transition={{ delay: 0.6, duration: 0.5 }}
                   className="space-y-4"
                 >
-                  {/* Breach data stream — shows alert sources */}
-                  <div className="hud-panel hud-panel-bottom hud-flicker overflow-hidden" style={{ height: '180px', animationDelay: '0.5s' }}>
-                    <div className="text-[11px] tracking-[0.15em] text-[#008cff] mb-2 uppercase font-semibold">Breach Feed</div>
-                    <div className="overflow-hidden" style={{ height: '140px' }}>
-                      <div className="hud-data-stream">
-                        {store.darkWebAlerts.length > 0
-                          ? store.darkWebAlerts.concat(store.darkWebAlerts).map((alert, i) => (
-                              <div key={i} className="text-[11px] leading-[1.7] tabular-nums truncate" style={{
-                                color: alert.severity === 'critical' ? '#ff3366bb' : alert.severity === 'high' ? '#ffaa0099' : '#008cff80',
-                              }}>
-                                [{alert.severity.toUpperCase().slice(0, 4)}] {alert.source}
-                              </div>
-                            ))
-                          : Array.from({ length: 20 }, (_, i) => (
-                              <div key={i} className="text-[11px] leading-[1.7] tabular-nums text-[#008cff]/60">
-                                [IDLE] Awaiting scan data...
-                              </div>
-                            ))}
-                      </div>
+                  {/* Breach feed — latest alerts with exposed data type */}
+                  <div className="hud-panel hud-panel-bottom hud-flicker overflow-hidden" style={{ animationDelay: '0.5s' }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[11px] tracking-[0.15em] text-[#008cff] uppercase font-semibold">Latest Alerts</div>
+                      {store.darkWebAlerts.filter(a => !a.resolved).length > 0 && (
+                        <span className="text-[10px] tabular-nums font-semibold" style={{ color: '#ff3366' }}>
+                          {store.darkWebAlerts.filter(a => !a.resolved).length} active
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-1" style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                      {store.darkWebAlerts.length > 0
+                        ? store.darkWebAlerts
+                            .slice()
+                            .sort((a, b) => {
+                              if (a.resolved !== b.resolved) return a.resolved ? 1 : -1;
+                              const sOrd: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+                              return (sOrd[a.severity] ?? 3) - (sOrd[b.severity] ?? 3);
+                            })
+                            .slice(0, 12)
+                            .map((alert) => {
+                              const sevColor = alert.severity === 'critical' ? '#ff3366' : alert.severity === 'high' ? '#ffaa00' : alert.severity === 'medium' ? '#00ddff' : '#008cff';
+                              const typeIcon: Record<string, string> = { credentials: '\u{1F511}', personal_info: '\u{1F464}', financial: '\u{1F4B3}', medical: '\u{2695}\u{FE0F}' };
+                              return (
+                                <button
+                                  key={alert.id}
+                                  className={`w-full text-left rounded-md px-2 py-1.5 transition-colors hover:bg-white/[0.04] ${alert.resolved ? 'opacity-35' : ''}`}
+                                  onClick={() => {
+                                    const el = document.getElementById(`hud-alert-${alert.id}`);
+                                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="h-1.5 w-1.5 rounded-full shrink-0"
+                                      style={{ backgroundColor: sevColor, boxShadow: alert.resolved ? 'none' : `0 0 6px ${sevColor}50` }}
+                                    />
+                                    <span className="text-[11px] font-medium text-white/70 truncate flex-1">{alert.source}</span>
+                                    <span className="text-[10px] shrink-0">{typeIcon[alert.type] || ''}</span>
+                                  </div>
+                                  <div className="ml-3.5 mt-0.5 flex items-center gap-1.5">
+                                    <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: `${sevColor}99` }}>
+                                      {alert.severity}
+                                    </span>
+                                    <span className="text-[9px] text-white/25">&middot;</span>
+                                    <span className="text-[9px] text-white/30 truncate">{alert.email}</span>
+                                  </div>
+                                </button>
+                              );
+                            })
+                        : (
+                          <div className="flex flex-col items-center justify-center py-6 text-center">
+                            <div className="text-[11px] text-[#008cff]/50 mb-1">No alerts yet</div>
+                            <div className="text-[10px] text-white/25">Run a dark web scan to check for exposures</div>
+                          </div>
+                        )}
                     </div>
                   </div>
 
@@ -1793,7 +1974,7 @@ export default function DashboardPage() {
                   className="space-y-5"
                 >
                   {/* ── Rotating Rings Visualization ── */}
-                  <div className="relative flex items-center justify-center" style={{ height: '320px' }}>
+                  <div className="relative flex items-center justify-center" style={{ height: '260px' }}>
                     {/* SVG Rings */}
                     <svg className="absolute inset-0 w-full h-full" viewBox="0 0 400 320" fill="none">
                       {/* Outer ring - slow clockwise */}
@@ -1855,30 +2036,103 @@ export default function DashboardPage() {
                       <ellipse cx="200" cy="160" rx="60" ry="15" stroke="#008cff0a" strokeWidth="0.5" fill="none" />
                       <ellipse cx="200" cy="160" rx="30" ry="60" stroke="#008cff12" strokeWidth="0.5" fill="none" />
 
-                      {/* Blip dots on globe */}
-                      {[
-                        { x: 175, y: 145, c: '#ff3366' },
-                        { x: 220, y: 170, c: '#ffaa00' },
-                        { x: 195, y: 180, c: '#00ddff' },
-                        { x: 210, y: 140, c: '#ff3366' },
-                        { x: 185, y: 155, c: '#008cff' },
-                      ].map((dot, i) => (
-                        <g key={i}>
-                          <circle cx={dot.x} cy={dot.y} r="2.5" fill={dot.c} opacity="0.7">
-                            <animate attributeName="opacity" values="0.7;1;0.7" dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
-                          </circle>
-                          <circle cx={dot.x} cy={dot.y} r="6" fill="none" stroke={dot.c} strokeWidth="0.5" opacity="0.3">
-                            <animate attributeName="r" values="3;10;3" dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
-                            <animate attributeName="opacity" values="0.4;0;0.4" dur={`${2 + i * 0.3}s`} repeatCount="indefinite" />
-                          </circle>
-                        </g>
-                      ))}
+                      {/* Blip dots with callout lines to data boxes */}
+                      {(() => {
+                        const callouts = [
+                          { x: 175, y: 140, ex: 42, ey: 28, align: 'left' as const, c: '#ff3366', label: `CRIT: ${activeAlerts.filter(a => a.severity === 'critical').length}`, sub: 'CREDENTIALS' },
+                          { x: 225, y: 135, ex: 330, ey: 25, align: 'right' as const, c: '#ffaa00', label: `HIGH: ${activeAlerts.filter(a => a.severity === 'high').length}`, sub: 'PERSONAL' },
+                          { x: 185, y: 185, ex: 38, ey: 280, align: 'left' as const, c: '#00ddff', label: `MED: ${activeAlerts.filter(a => a.severity === 'medium').length}`, sub: 'FINANCIAL' },
+                          { x: 215, y: 178, ex: 335, ey: 275, align: 'right' as const, c: '#008cff', label: `${store.connectedEmails.length} ACCT`, sub: 'MONITORED' },
+                        ];
+                        return callouts.map((co, i) => {
+                          // Elbow point: go horizontal first then vertical
+                          const mx = co.align === 'left' ? co.x - 30 : co.x + 30;
+                          const my = co.y;
+                          return (
+                            <g key={`callout-${i}`}>
+                              {/* Blip dot */}
+                              <circle cx={co.x} cy={co.y} r="3" fill={co.c} opacity="0.8">
+                                <animate attributeName="opacity" values="0.8;1;0.8" dur={`${2 + i * 0.4}s`} repeatCount="indefinite" />
+                              </circle>
+                              <circle cx={co.x} cy={co.y} r="7" fill="none" stroke={co.c} strokeWidth="0.5" opacity="0.3">
+                                <animate attributeName="r" values="4;12;4" dur={`${2.5 + i * 0.4}s`} repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="0.4;0;0.4" dur={`${2.5 + i * 0.4}s`} repeatCount="indefinite" />
+                              </circle>
 
-                      {/* Corner brackets on SVG */}
+                              {/* Callout line: dot → elbow → endpoint */}
+                              <line x1={co.x} y1={co.y} x2={mx} y2={my} stroke={`${co.c}60`} strokeWidth="0.7" />
+                              <line x1={mx} y1={my} x2={co.ex} y2={co.ey} stroke={`${co.c}40`} strokeWidth="0.7" strokeDasharray="3 2" />
+
+                              {/* Endpoint node (small box) */}
+                              <rect
+                                x={co.align === 'left' ? co.ex - 2 : co.ex - 2}
+                                y={co.ey - 2}
+                                width="4" height="4"
+                                fill={co.c}
+                                opacity="0.7"
+                              >
+                                <animate attributeName="opacity" values="0.5;0.9;0.5" dur="2s" repeatCount="indefinite" begin={`${i * 0.3}s`} />
+                              </rect>
+
+                              {/* Data label box */}
+                              <rect
+                                x={co.align === 'left' ? co.ex - 2 : co.ex + 6}
+                                y={co.ey - 12}
+                                width="72" height="22"
+                                fill={`${co.c}08`}
+                                stroke={`${co.c}30`}
+                                strokeWidth="0.5"
+                                rx="1"
+                              />
+                              {/* Horizontal accent line on box */}
+                              <line
+                                x1={co.align === 'left' ? co.ex - 2 : co.ex + 6}
+                                y1={co.ey - 12}
+                                x2={co.align === 'left' ? co.ex + 18 : co.ex + 26}
+                                y2={co.ey - 12}
+                                stroke={co.c}
+                                strokeWidth="1.5"
+                                opacity="0.7"
+                              />
+                              <text
+                                x={co.align === 'left' ? co.ex + 4 : co.ex + 12}
+                                y={co.ey - 3}
+                                fill={co.c}
+                                fontSize="7"
+                                fontFamily="monospace"
+                                fontWeight="bold"
+                                letterSpacing="0.5"
+                                opacity="0.85"
+                              >
+                                {co.label}
+                              </text>
+                              <text
+                                x={co.align === 'left' ? co.ex + 4 : co.ex + 12}
+                                y={co.ey + 5}
+                                fill={`${co.c}`}
+                                fontSize="5.5"
+                                fontFamily="monospace"
+                                letterSpacing="1"
+                                opacity="0.45"
+                              >
+                                {co.sub}
+                              </text>
+                            </g>
+                          );
+                        });
+                      })()}
+
+                      {/* Corner brackets */}
                       <path d="M30 30 L30 10 L50 10" stroke="#008cff50" strokeWidth="1" fill="none" />
                       <path d="M370 30 L370 10 L350 10" stroke="#008cff50" strokeWidth="1" fill="none" />
                       <path d="M30 290 L30 310 L50 310" stroke="#008cff50" strokeWidth="1" fill="none" />
                       <path d="M370 290 L370 310 L350 310" stroke="#008cff50" strokeWidth="1" fill="none" />
+
+                      {/* Additional corner detail lines */}
+                      <line x1="10" y1="30" x2="30" y2="30" stroke="#008cff30" strokeWidth="0.5" />
+                      <line x1="370" y1="30" x2="390" y2="30" stroke="#008cff30" strokeWidth="0.5" />
+                      <line x1="10" y1="290" x2="30" y2="290" stroke="#008cff30" strokeWidth="0.5" />
+                      <line x1="370" y1="290" x2="390" y2="290" stroke="#008cff30" strokeWidth="0.5" />
                     </svg>
 
                     {/* Center content overlay */}
@@ -2114,6 +2368,67 @@ export default function DashboardPage() {
 
               {/* ═══ LOWER SECTION: Filter + Alerts ═══ */}
 
+              {/* ── Priority Actions — top unresolved alerts ── */}
+              {(() => {
+                const urgent = store.darkWebAlerts
+                  .filter(a => !a.resolved)
+                  .sort((a, b) => {
+                    const ord: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+                    return (ord[a.severity] ?? 3) - (ord[b.severity] ?? 3);
+                  })
+                  .slice(0, 3);
+                if (urgent.length === 0) return null;
+                const typeLabels: Record<string, string> = { credentials: 'Credentials', personal_info: 'Personal Info', financial: 'Financial', medical: 'Medical' };
+                return (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 1.4 }}
+                    className="mt-6 mb-2"
+                  >
+                    <div className="text-[11px] tracking-[0.15em] text-[#ff3366] mb-3 uppercase font-semibold flex items-center gap-2">
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                      </svg>
+                      Requires Attention
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      {urgent.map((alert, ui) => {
+                        const svColor = alert.severity === 'critical' ? '#ff3366' : alert.severity === 'high' ? '#ffaa00' : '#00ddff';
+                        return (
+                          <motion.button
+                            key={alert.id}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 1.5 + ui * 0.06 }}
+                            className="text-left rounded-sm border transition-all hover:bg-white/[0.03]"
+                            style={{ borderColor: `${svColor}20`, background: `${svColor}05` }}
+                            onClick={() => {
+                              const el = document.getElementById(`hud-alert-${alert.id}`);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }}
+                          >
+                            <div className="h-[2px] w-full" style={{ background: `linear-gradient(90deg, ${svColor}80, transparent)` }} />
+                            <div className="p-3">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: svColor, boxShadow: `0 0 6px ${svColor}50` }} />
+                                <span className="text-[12px] font-semibold text-white/80 truncate">{alert.source}</span>
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px]">
+                                <span className="font-bold uppercase tracking-wider" style={{ color: svColor }}>{alert.severity}</span>
+                                <span className="text-white/20">&middot;</span>
+                                <span className="text-white/40 truncate">{typeLabels[alert.type] || alert.type}</span>
+                              </div>
+                              <p className="mt-1.5 text-[10px] text-white/30 line-clamp-2 leading-relaxed">{alert.description}</p>
+                            </div>
+                          </motion.button>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                );
+              })()}
+
               {/* ── Filter chips ── */}
               {store.darkWebAlerts.length > 0 && (
                 <motion.div
@@ -2197,6 +2512,7 @@ export default function DashboardPage() {
                     };
                     return (
                       <motion.div
+                        id={`hud-alert-${alert.id}`}
                         key={alert.id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: alert.resolved ? 0.35 : 1, x: 0 }}
@@ -2554,9 +2870,9 @@ export default function DashboardPage() {
         open={scoreHistoryOpen}
         onClose={() => setScoreHistoryOpen(false)}
         history={store.scoreHistory}
-        breakdown={store.scoreBreakdown}
-        resolvedBreaches={store.breaches.filter(b => b.resolved).length}
-        removedBrokers={store.dataBrokers.filter(b => b.status === 'removed').length}
+        breakdown={scopedBreakdown}
+        resolvedBreaches={scopedBreaches.filter(b => b.resolved).length}
+        removedBrokers={scopedBrokers.filter(b => b.status === 'removed').length}
       />
     </motion.div>
   );

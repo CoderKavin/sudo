@@ -58,14 +58,16 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 async function loadInterFont(doc: jsPDF): Promise<void> {
   try {
-    const [regular, bold] = await Promise.all([
-      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuLyfAZ9hjQ.ttf').then(r => r.arrayBuffer()),
-      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuDyfAZ9hjQ.ttf').then(r => r.arrayBuffer()),
+    // Inter Medium (500) as normal — heavier than Regular for better readability
+    // Inter ExtraBold (800) as bold — punchy headings like SF Pro Bold
+    const [medium, extrabold] = await Promise.all([
+      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuI6fAZ9hjQ.ttf').then(r => r.arrayBuffer()),
+      fetch('https://fonts.gstatic.com/s/inter/v18/UcCO3FwrK3iLTeHuS_nVMrMxCp50SjIw2boKoduKmMEVuEKfAZ9hjQ.ttf').then(r => r.arrayBuffer()),
     ]);
-    doc.addFileToVFS('Inter-Regular.ttf', arrayBufferToBase64(regular));
-    doc.addFont('Inter-Regular.ttf', 'Inter', 'normal');
-    doc.addFileToVFS('Inter-Bold.ttf', arrayBufferToBase64(bold));
-    doc.addFont('Inter-Bold.ttf', 'Inter', 'bold');
+    doc.addFileToVFS('Inter-Medium.ttf', arrayBufferToBase64(medium));
+    doc.addFont('Inter-Medium.ttf', 'Inter', 'normal');
+    doc.addFileToVFS('Inter-ExtraBold.ttf', arrayBufferToBase64(extrabold));
+    doc.addFont('Inter-ExtraBold.ttf', 'Inter', 'bold');
   } catch {
     // Fallback to helvetica if font loading fails
   }
