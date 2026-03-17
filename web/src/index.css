@@ -476,15 +476,57 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
 
   /* ═══════════════════════════════════════
-     HUD / FUI — Dark Web Section
+     HUD / FUI — Dark Web Full-Screen Overlay
+     Cinematic scan-and-analyze interface
      ═══════════════════════════════════════ */
 
-  .hud-mode {
+  .hud-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #050a08;
     font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace !important;
-    background: #000 !important;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
-  /* Scan line sweep */
+  /* ─── Layer 1: Ambient grid ─── */
+  @keyframes hud-grid-drift {
+    0% { background-position: 0 0, 0 0; }
+    100% { background-position: 60px 60px, 60px 60px; }
+  }
+  .hud-grid {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.018) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: hud-grid-drift 120s linear infinite;
+  }
+
+  /* ─── Layer 2: Subtle noise ─── */
+  @keyframes hud-noise-shift {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-1px, 1px); }
+    50% { transform: translate(1px, -1px); }
+    75% { transform: translate(-1px, 0); }
+    100% { transform: translate(0, 0); }
+  }
+  .hud-noise {
+    position: fixed;
+    inset: -4px;
+    pointer-events: none;
+    z-index: 2;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 128px 128px;
+    animation: hud-noise-shift 0.15s steps(4) infinite;
+  }
+
+  /* ─── Layer 3: Scan sweep (single boot pass) ─── */
   @keyframes hud-scanline {
     0% { transform: translateY(-100%); }
     100% { transform: translateY(100vh); }
@@ -497,165 +539,219 @@
     background: linear-gradient(
       180deg,
       transparent 0%,
-      rgba(0,255,136,0.03) 45%,
-      rgba(0,255,136,0.08) 50%,
-      rgba(0,255,136,0.03) 55%,
+      rgba(0,255,136,0.01) 42%,
+      rgba(0,255,136,0.08) 49%,
+      rgba(0,255,136,0.15) 50%,
+      rgba(0,255,136,0.08) 51%,
+      rgba(0,255,136,0.01) 58%,
       transparent 100%
     );
-    animation: hud-scanline 2.5s linear;
-    animation-fill-mode: forwards;
+    animation: hud-scanline 1.6s cubic-bezier(0.4,0,0.2,1) forwards;
   }
 
-  /* Grid overlay */
-  .hud-grid {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 1;
-    background-image:
-      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
-    background-size: 60px 60px;
-  }
-
-  /* Glitch effect */
+  /* ─── Glitch entrance ─── */
   @keyframes hud-glitch {
-    0% { transform: translate(0); filter: none; }
-    2% { transform: translate(-3px, 1px); filter: hue-rotate(90deg); }
-    4% { transform: translate(2px, -1px); filter: hue-rotate(-90deg); }
-    6% { transform: translate(-1px, 2px); }
-    8% { transform: translate(0); filter: none; }
-    100% { transform: translate(0); filter: none; }
+    0%   { transform: translate(0); clip-path: inset(0); filter: none; }
+    4%   { transform: translate(-3px, 1px); clip-path: inset(15% 0 65% 0); filter: hue-rotate(60deg); }
+    7%   { transform: translate(2px, -1px); clip-path: inset(55% 0 15% 0); filter: hue-rotate(-60deg); }
+    10%  { transform: translate(-1px, 0); clip-path: inset(35% 0 40% 0); }
+    13%  { transform: translate(0); clip-path: inset(0); filter: none; }
+    100% { transform: translate(0); clip-path: inset(0); filter: none; }
   }
   .hud-glitch-in {
-    animation: hud-glitch 0.6s ease-out;
+    animation: hud-glitch 0.4s steps(1, end);
   }
 
-  /* Flicker animation for panels */
+  /* ─── Stepped flicker (staccato, not smooth) ─── */
   @keyframes hud-flicker {
-    0% { opacity: 0; }
-    5% { opacity: 0.6; }
-    10% { opacity: 0.2; }
-    15% { opacity: 0.8; }
-    20% { opacity: 0.4; }
-    30% { opacity: 1; }
-    50% { opacity: 0.95; }
-    70% { opacity: 1; }
+    0%   { opacity: 0; }
+    5%   { opacity: 0.6; }
+    10%  { opacity: 0; }
+    15%  { opacity: 0.3; }
+    20%  { opacity: 0; }
+    25%  { opacity: 0.8; }
+    35%  { opacity: 0.2; }
+    45%  { opacity: 0.9; }
+    60%  { opacity: 1; }
     100% { opacity: 1; }
   }
   .hud-flicker {
-    animation: hud-flicker 0.8s ease-out forwards;
+    animation: hud-flicker 0.5s steps(1, end) forwards;
   }
 
-  /* Neon glow text */
-  .hud-neon {
-    color: #00ff88;
-    text-shadow: 0 0 6px rgba(0,255,136,0.4), 0 0 20px rgba(0,255,136,0.15);
-  }
-  .hud-neon-red {
-    color: #ff3366;
-    text-shadow: 0 0 6px rgba(255,51,102,0.4), 0 0 20px rgba(255,51,102,0.15);
-  }
-  .hud-neon-amber {
-    color: #ffaa00;
-    text-shadow: 0 0 6px rgba(255,170,0,0.4), 0 0 20px rgba(255,170,0,0.15);
-  }
-  .hud-neon-cyan {
-    color: #00ddff;
-    text-shadow: 0 0 6px rgba(0,221,255,0.4), 0 0 20px rgba(0,221,255,0.15);
-  }
-
-  /* Corner bracket frame */
+  /* ─── Panel with corner brackets ─── */
   .hud-panel {
     position: relative;
-    background: rgba(0,255,136,0.02);
-    border: 1px solid rgba(0,255,136,0.12);
-    padding: 20px;
+    background: rgba(0,255,136,0.012);
+    border: 1px solid rgba(0,255,136,0.06);
+    padding: 20px 24px;
+  }
+  @keyframes hud-bracket-snap {
+    0%   { opacity: 0; transform: scale(1.4); }
+    55%  { opacity: 0; transform: scale(1.4); }
+    60%  { opacity: 1; transform: scale(1); }
+    100% { opacity: 1; transform: scale(1); }
   }
   .hud-panel::before,
   .hud-panel::after {
     content: '';
     position: absolute;
-    width: 16px;
-    height: 16px;
-    border-color: rgba(0,255,136,0.5);
+    width: 12px;
+    height: 12px;
+    border-color: rgba(0,255,136,0.4);
     border-style: solid;
+    animation: hud-bracket-snap 0.6s steps(1, end) forwards;
   }
   .hud-panel::before {
-    top: -1px;
-    left: -1px;
-    border-width: 2px 0 0 2px;
+    top: -1px; left: -1px;
+    border-width: 1px 0 0 1px;
   }
   .hud-panel::after {
-    top: -1px;
-    right: -1px;
-    border-width: 2px 2px 0 0;
+    top: -1px; right: -1px;
+    border-width: 1px 1px 0 0;
+    animation-delay: 0.04s;
   }
   .hud-panel-bottom::before,
   .hud-panel-bottom::after {
     content: '';
     position: absolute;
-    width: 16px;
-    height: 16px;
-    border-color: rgba(0,255,136,0.5);
+    width: 12px;
+    height: 12px;
+    border-color: rgba(0,255,136,0.4);
     border-style: solid;
+    animation: hud-bracket-snap 0.6s steps(1, end) forwards;
   }
   .hud-panel-bottom::before {
-    bottom: -1px;
-    left: -1px;
-    border-width: 0 0 2px 2px;
+    bottom: -1px; left: -1px;
+    border-width: 0 0 1px 1px;
+    animation-delay: 0.08s;
   }
   .hud-panel-bottom::after {
-    bottom: -1px;
-    right: -1px;
-    border-width: 0 2px 2px 0;
+    bottom: -1px; right: -1px;
+    border-width: 0 1px 1px 0;
+    animation-delay: 0.12s;
   }
 
-  /* Connector line draw animation */
-  @keyframes hud-line-draw {
-    from { stroke-dashoffset: 200; }
-    to { stroke-dashoffset: 0; }
+  /* ─── Text resolve (blur → focus) ─── */
+  @keyframes hud-text-resolve {
+    0%   { opacity: 0; filter: blur(4px); letter-spacing: 0.3em; }
+    30%  { opacity: 1; filter: blur(2px); letter-spacing: 0.15em; }
+    60%  { filter: blur(0.5px); letter-spacing: 0.05em; }
+    100% { opacity: 1; filter: blur(0); letter-spacing: inherit; }
+  }
+  .hud-text-resolve {
+    animation: hud-text-resolve 0.4s cubic-bezier(0,0,0.2,1) forwards;
   }
 
-  /* Pulse ring */
-  @keyframes hud-pulse-ring {
-    0% { transform: scale(1); opacity: 0.5; }
-    100% { transform: scale(2.5); opacity: 0; }
+  /* ─── Subtle idle phosphor ─── */
+  @keyframes hud-idle {
+    0%, 100% { opacity: 1; }
+    40%  { opacity: 0.97; }
+    60%  { opacity: 0.94; }
+    80%  { opacity: 0.98; }
+  }
+  .hud-idle {
+    animation: hud-idle 4s ease-in-out infinite;
   }
 
-  /* Horizontal scan bar */
+  /* ─── Status blink ─── */
+  @keyframes hud-blink {
+    0%, 100% { opacity: 1; }
+    48% { opacity: 1; }
+    50% { opacity: 0.15; }
+    52% { opacity: 1; }
+    78% { opacity: 1; }
+    80% { opacity: 0.3; }
+    82% { opacity: 1; }
+  }
+  .hud-blink {
+    animation: hud-blink 3s ease-in-out infinite;
+  }
+
+  /* ─── Button with sweep ─── */
+  .hud-btn {
+    position: relative;
+    overflow: hidden;
+  }
+  .hud-btn::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.06), transparent);
+    animation: hud-btn-sweep 4s linear infinite;
+  }
+  @keyframes hud-btn-sweep {
+    0%   { left: -60%; }
+    100% { left: 160%; }
+  }
+
+  /* ─── Horizontal scan bar ─── */
   @keyframes hud-hscan {
-    0% { left: -20%; }
+    0%   { left: -20%; }
     100% { left: 120%; }
   }
   .hud-hscan::after {
     content: '';
     position: absolute;
-    top: 0;
-    left: -20%;
+    top: 0; left: -20%;
     width: 20%;
     height: 100%;
-    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.15), transparent);
-    animation: hud-hscan 3s linear infinite;
+    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.08), transparent);
+    animation: hud-hscan 2.5s linear infinite;
   }
 
-  /* Subtle noise texture */
-  .hud-noise {
+  /* ─── CRT scanlines ─── */
+  .hud-crt::before {
+    content: '';
     position: fixed;
     inset: 0;
     pointer-events: none;
-    z-index: 2;
-    opacity: 0.03;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 128px 128px;
+    z-index: 3;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.025) 2px,
+      rgba(0,0,0,0.025) 4px
+    );
   }
 
-  /* Telemetry blink */
-  @keyframes hud-blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.3; }
+  /* ─── Vignette ─── */
+  .hud-vignette {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 4;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
   }
-  .hud-blink {
-    animation: hud-blink 1.5s ease-in-out infinite;
+
+  /* ─── Traveling light on connector ─── */
+  @keyframes hud-trace {
+    0%   { left: -5%; opacity: 0; }
+    5%   { opacity: 0.8; }
+    95%  { opacity: 0.8; }
+    100% { left: 105%; opacity: 0; }
+  }
+  .hud-trace-light {
+    position: absolute;
+    width: 60px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0,255,136,0.6), transparent);
+    box-shadow: 0 0 12px rgba(0,255,136,0.3);
+    animation: hud-trace 3s linear infinite;
+  }
+
+  /* ─── Progress bar fill ─── */
+  @keyframes hud-progress-fill {
+    0%   { width: 0%; }
+    100% { width: 100%; }
+  }
+
+  /* ─── Severity indicator pulse ─── */
+  @keyframes hud-sev-pulse {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+    50% { opacity: 0.5; box-shadow: 0 0 8px currentColor; }
   }
 }

@@ -1,6 +1,31 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+
+function CountUp({ target, delay }: { target: number; delay: number }) {
+  const [value, setValue] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      const duration = 600;
+      const start = performance.now();
+      const tick = (now: number) => {
+        const elapsed = now - start;
+        const progress = Math.min(elapsed / duration, 1);
+        setValue(Math.round(progress * target));
+        if (progress < 1) rafRef.current = requestAnimationFrame(tick);
+      };
+      rafRef.current = requestAnimationFrame(tick);
+    }, delay);
+    return () => {
+      clearTimeout(timeout);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, delay]);
+
+  return <>{value}</>;
+}
 import useStore from '../store/useStore';
 import {
   isExtensionInstalled,
@@ -19,7 +44,7 @@ import {
   copyToClipboard,
 } from '../lib/actionTemplates';
 
-type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions' | 'darkweb';
+type Tab = 'breaches' | 'brokers' | 'accounts' | 'subscriptions';
 
 const SEV: Record<string, { bg: string; color: string }> = {
   critical: { bg: 'rgba(239,68,68,0.1)', color: '#ef4444' },
@@ -48,6 +73,8 @@ export default function DashboardPage() {
   const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
   const [expandedBroker, setExpandedBroker] = useState<string | null>(null);
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  const [hudActive, setHudActive] = useState(false);
+  const [hudFilter, setHudFilter] = useState<string | null>(null);
 
   const handleCopy = useCallback(async (text: string, id: string) => {
     await copyToClipboard(text);
@@ -352,17 +379,26 @@ export default function DashboardPage() {
         </div>
 
         {/* Dark Web */}
-        <div className="glass-card">
+        <div className="glass-card flex flex-col">
           <div className="text-[2rem] font-bold tracking-tight text-[#a78bfa] tabular-nums">
             {store.darkWebAlerts.filter((a) => !a.resolved).length}
           </div>
           <div className="mt-1 text-[14px] text-white/35">Dark Web Alerts</div>
           {store.darkWebAlerts.filter((a) => !a.resolved).length > 0 && (
-            <div className="mt-3 flex items-center gap-1.5 text-[12px] text-[#a78bfa]/60">
+            <div className="mt-2 flex items-center gap-1.5 text-[12px] text-[#a78bfa]/60">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#a78bfa] animate-pulse" />
               Credentials exposed
             </div>
           )}
+          <button
+            onClick={() => { setHudActive(true); setHudFilter(null); }}
+            className="mt-auto pt-3 w-full rounded-xl py-2 px-3 text-[11px] font-medium text-[#00ff88]/60 bg-[#00ff88]/[0.04] border border-[#00ff88]/[0.1] hover:bg-[#00ff88]/[0.08] hover:text-[#00ff88] hover:border-[#00ff88]/20 transition-all duration-200 flex items-center justify-center gap-1.5"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            Dark Web Scanner
+          </button>
         </div>
       </motion.div>
 
@@ -394,13 +430,12 @@ export default function DashboardPage() {
         className="mb-6"
       >
         <div className="flex gap-1 rounded-2xl bg-white/[0.02] border border-white/[0.04] p-1.5">
-          {(['breaches', 'brokers', 'darkweb', 'accounts', 'subscriptions'] as Tab[]).map((tab) => {
+          {(['breaches', 'brokers', 'accounts', 'subscriptions'] as Tab[]).map((tab) => {
             const isActive = activeTab === tab;
-            const label = tab === 'darkweb' ? 'Dark Web' : tab.charAt(0).toUpperCase() + tab.slice(1);
+            const label = tab.charAt(0).toUpperCase() + tab.slice(1);
             const count =
               tab === 'breaches' ? unresolvedBreaches
               : tab === 'brokers' ? exposedBrokers
-              : tab === 'darkweb' ? store.darkWebAlerts.filter((a) => !a.resolved).length
               : tab === 'accounts' ? store.discoveredAccounts.length
               : tab === 'subscriptions' ? store.trackedSubscriptions.length
               : null;
@@ -427,99 +462,99 @@ export default function DashboardPage() {
       </motion.div>
 
       {/* ─── Search + Filters ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-        className="mb-6 space-y-3"
-      >
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={`Search ${activeTab}...`}
-          className="input"
-        />
-        {/* Filter chips */}
-        {activeTab === 'accounts' && store.discoveredAccounts.length > 0 && (() => {
-          const cats = [...new Set(store.discoveredAccounts.map((a) => a.category))].sort();
-          return (
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => setFilter(null)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                  !filter ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
-                }`}
-              >All ({store.discoveredAccounts.length})</button>
-              {cats.map((cat) => {
-                const count = store.discoveredAccounts.filter((a) => a.category === cat).length;
-                return (
-                  <button
-                    key={cat}
-                    onClick={() => setFilter(filter === cat ? null : cat)}
-                    className={`rounded-full px-3 py-1 text-[11px] font-medium capitalize transition-all ${
-                      filter === cat ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
-                    }`}
-                  >{cat} ({count})</button>
-                );
-              })}
+      {(() => {
+        const filterChips: { key: string | null; label: string; count: number }[] =
+          activeTab === 'breaches' ? [
+            { key: null, label: 'All', count: store.breaches.length },
+            { key: 'unresolved', label: 'Unresolved', count: unresolvedBreaches },
+            { key: 'resolved', label: 'Resolved', count: store.breaches.length - unresolvedBreaches },
+          ]
+          : activeTab === 'brokers' ? [
+            { key: null, label: 'All', count: store.dataBrokers.length },
+            { key: 'found', label: 'Exposed', count: exposedBrokers },
+            { key: 'removing', label: 'Removing', count: removingBrokers },
+            { key: 'removed', label: 'Removed', count: removedBrokers },
+          ]
+          : activeTab === 'subscriptions' ? [
+            { key: null, label: 'All', count: store.trackedSubscriptions.length },
+            { key: 'active', label: 'Active', count: store.trackedSubscriptions.filter((s) => (s.status ?? (s.active ? 'active' : 'cancelled')) === 'active').length },
+            { key: 'cancelled', label: 'Cancelled', count: store.trackedSubscriptions.filter((s) => s.status === 'cancelled' || s.status === 'likely_cancelled').length },
+            { key: 'failed', label: 'Failed', count: store.trackedSubscriptions.filter((s) => s.status === 'failed').length },
+          ]
+          : activeTab === 'accounts' ? [
+            { key: null, label: 'All', count: store.discoveredAccounts.length },
+            ...[...new Set(store.discoveredAccounts.map((a) => a.category))].sort().map((cat) => ({
+              key: cat, label: cat, count: store.discoveredAccounts.filter((a) => a.category === cat).length,
+            })),
+          ]
+          : [];
+
+        const visibleChips = filterChips.filter((f) => f.count > 0);
+        const placeholders: Record<Tab, string> = {
+          breaches: 'Search breaches by name or email...',
+          brokers: 'Search data brokers...',
+          accounts: 'Search accounts by name or domain...',
+          subscriptions: 'Search subscriptions...',
+        };
+
+        return (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mb-6 space-y-3"
+          >
+            {/* Search bar */}
+            <div className="relative">
+              <svg className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={placeholders[activeTab]}
+                className="input !pl-11 !pr-10"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-white/20 hover:text-white/50 hover:bg-white/[0.06] transition-all"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
             </div>
-          );
-        })()}
-        {activeTab === 'subscriptions' && store.trackedSubscriptions.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: null, label: 'All', count: store.trackedSubscriptions.length },
-              { key: 'active', label: 'Active', count: store.trackedSubscriptions.filter((s) => (s.status ?? (s.active ? 'active' : 'cancelled')) === 'active').length },
-              { key: 'cancelled', label: 'Cancelled', count: store.trackedSubscriptions.filter((s) => s.status === 'cancelled' || s.status === 'likely_cancelled').length },
-              { key: 'failed', label: 'Failed', count: store.trackedSubscriptions.filter((s) => s.status === 'failed').length },
-            ].filter((f) => f.count > 0).map((f) => (
-              <button
-                key={f.key ?? 'all'}
-                onClick={() => setFilter(filter === f.key ? null : f.key)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
-                }`}
-              >{f.label} ({f.count})</button>
-            ))}
-          </div>
-        )}
-        {activeTab === 'breaches' && store.breaches.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: null, label: 'All', count: store.breaches.length },
-              { key: 'unresolved', label: 'Unresolved', count: unresolvedBreaches },
-              { key: 'resolved', label: 'Resolved', count: store.breaches.length - unresolvedBreaches },
-            ].filter((f) => f.count > 0).map((f) => (
-              <button
-                key={f.key ?? 'all'}
-                onClick={() => setFilter(filter === f.key ? null : f.key)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
-                }`}
-              >{f.label} ({f.count})</button>
-            ))}
-          </div>
-        )}
-        {activeTab === 'brokers' && store.dataBrokers.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {[
-              { key: null, label: 'All', count: store.dataBrokers.length },
-              { key: 'found', label: 'Exposed', count: exposedBrokers },
-              { key: 'removing', label: 'Removing', count: removingBrokers },
-              { key: 'removed', label: 'Removed', count: removedBrokers },
-            ].filter((f) => f.count > 0).map((f) => (
-              <button
-                key={f.key ?? 'all'}
-                onClick={() => setFilter(filter === f.key ? null : f.key)}
-                className={`rounded-full px-3 py-1 text-[11px] font-medium transition-all ${
-                  filter === f.key ? 'bg-white/[0.08] text-white border border-white/[0.1]' : 'bg-white/[0.02] text-white/25 border border-white/[0.04] hover:text-white/40'
-                }`}
-              >{f.label} ({f.count})</button>
-            ))}
-          </div>
-        )}
-      </motion.div>
+
+            {/* Filter chips */}
+            {visibleChips.length > 1 && (
+              <div className="flex flex-wrap gap-1.5">
+                {visibleChips.map((f) => {
+                  const isActive = filter === f.key;
+                  return (
+                    <button
+                      key={f.key ?? 'all'}
+                      onClick={() => setFilter(isActive && f.key !== null ? null : f.key)}
+                      className={`rounded-xl px-3.5 py-1.5 text-[11px] font-medium capitalize transition-all duration-200 ${
+                        isActive
+                          ? 'bg-[var(--accent)]/10 text-[var(--accent)] border border-[var(--accent)]/20 shadow-[0_0_12px_rgba(124,106,239,0.1)]'
+                          : 'bg-white/[0.02] text-white/30 border border-white/[0.04] hover:text-white/50 hover:bg-white/[0.04] hover:border-white/[0.08]'
+                      }`}
+                    >
+                      {f.label}
+                      <span className={`ml-1.5 tabular-nums ${isActive ? 'text-[var(--accent)]/60' : 'text-white/15'}`}>
+                        {f.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </motion.div>
+        );
+      })()}
 
       {/* ─── Breaches ─── */}
       {activeTab === 'breaches' && (
@@ -904,7 +939,7 @@ export default function DashboardPage() {
                             Manage
                           </button>
                           <button
-                            className="btn-sm !py-1 !px-2.5 !text-[10px] !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
+                            className="btn-sm !py-1 !px-2.5 !text-[10px] !bg-[#ef4444]/[0.08] !text-[#ef4444]/60 !border-[#ef4444]/10"
                             onClick={() => setExpandedAccount(expandedAccount === account.id ? null : account.id)}
                           >
                             {expandedAccount === account.id ? 'Close' : 'Delete Account'}
@@ -1088,26 +1123,37 @@ export default function DashboardPage() {
                         </div>
                       </div>
                       {/* Actions */}
-                      <div className="mt-3 flex gap-1.5 border-t border-white/[0.04] pt-3">
+                      <div className="mt-3 flex gap-2 border-t border-white/[0.04] pt-3">
                         <button
-                          className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1"
+                          className="flex-1 rounded-xl py-2 px-3 text-[11px] font-medium text-white/50 bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.06] hover:text-white/70 hover:border-white/[0.1] transition-all duration-200 flex items-center justify-center gap-1.5"
                           onClick={() => window.open(`https://${sub.domain}`, '_blank', 'noopener,noreferrer')}
                         >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                           Visit Site
                         </button>
                         {(sub.status ?? (sub.active ? 'active' : 'cancelled')) === 'active' && (
                           <button
-                            className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1 !bg-[#ef4444]/8 !text-[#ef4444]/60 !border-[#ef4444]/10"
+                            className={`flex-1 rounded-xl py-2 px-3 text-[11px] font-medium transition-all duration-200 flex items-center justify-center gap-1.5 ${
+                              expandedSub === sub.id
+                                ? 'bg-white/[0.06] text-white/50 border border-white/[0.08]'
+                                : 'bg-[#ef4444]/[0.06] text-[#ef4444]/70 border border-[#ef4444]/[0.12] hover:bg-[#ef4444]/[0.1] hover:text-[#ef4444] hover:border-[#ef4444]/20'
+                            }`}
                             onClick={() => setExpandedSub(expandedSub === sub.id ? null : sub.id)}
                           >
-                            {expandedSub === sub.id ? 'Close' : 'Cancel'}
+                            {expandedSub === sub.id ? 'Close' : (
+                              <>
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                Cancel
+                              </>
+                            )}
                           </button>
                         )}
                         {sub.status === 'failed' && (
                           <button
-                            className="btn-sm !py-1 !px-2.5 !text-[10px] flex-1 !bg-[#f97316]/8 !text-[#f97316]/60 !border-[#f97316]/10"
+                            className="flex-1 rounded-xl py-2 px-3 text-[11px] font-medium bg-[#f97316]/[0.06] text-[#f97316]/70 border border-[#f97316]/[0.12] hover:bg-[#f97316]/[0.1] hover:text-[#f97316] hover:border-[#f97316]/20 transition-all duration-200 flex items-center justify-center gap-1.5"
                             onClick={() => window.open(`https://${sub.domain}/account/billing`, '_blank', 'noopener,noreferrer')}
                           >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5z" /></svg>
                             Fix Payment
                           </button>
                         )}
@@ -1176,316 +1222,368 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ─── Dark Web — HUD/FUI Mode ─── */}
-      {activeTab === 'darkweb' && (
-        <motion.div
-          key="darkweb-hud"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="hud-mode relative -mx-6 -mb-6 px-6 pb-6 pt-2 min-h-[60vh]"
-          style={{ fontFamily: "'SF Mono', 'Fira Code', 'JetBrains Mono', monospace" }}
-        >
-          {/* Overlays */}
-          <div className="hud-grid" style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
-          <div className="hud-noise" style={{ position: 'absolute', inset: 0, zIndex: 1 }} />
+      {/* ─── Dark Web HUD — Full-Screen Overlay ─── */}
+      <AnimatePresence>
+        {hudActive && (
           <motion.div
-            className="hud-scanline"
-            style={{ position: 'absolute', inset: 0, zIndex: 2 }}
-            initial={{ opacity: 1 }}
-            animate={{ opacity: 0 }}
-            transition={{ delay: 2.5, duration: 0.3 }}
-          />
+            key="hud-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 0.98, filter: 'blur(8px) brightness(2)' }}
+            transition={{ duration: 0.4 }}
+            className="hud-overlay hud-crt"
+          >
+            {/* ── Ambient layers ── */}
+            <motion.div className="hud-grid" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 1.5 }} />
+            <motion.div className="hud-noise" initial={{ opacity: 0 }} animate={{ opacity: 0.03 }} transition={{ delay: 0.2, duration: 0.6 }} />
+            <div className="hud-vignette" />
+            <motion.div className="hud-scanline" initial={{ opacity: 1 }} animate={{ opacity: 0 }} transition={{ delay: 1.8, duration: 0.15 }} />
 
-          {/* Glitch entrance wrapper */}
-          <div className="hud-glitch-in relative" style={{ zIndex: 3 }}>
+            {/* ── Content ── */}
+            <div className="hud-glitch-in relative mx-auto max-w-5xl px-8 py-10" style={{ zIndex: 10 }}>
 
-          {/* Connector SVG lines */}
-          <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ zIndex: 0 }}>
-            <motion.line
-              x1="10%" y1="80" x2="90%" y2="80"
-              stroke="rgba(0,255,136,0.1)" strokeWidth="1"
-              strokeDasharray="200"
-              initial={{ strokeDashoffset: 200 }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ duration: 1.5, delay: 0.5 }}
-            />
-            <motion.line
-              x1="50%" y1="0" x2="50%" y2="100%"
-              stroke="rgba(0,255,136,0.04)" strokeWidth="1"
-              strokeDasharray="200"
-              initial={{ strokeDashoffset: 200 }}
-              animate={{ strokeDashoffset: 0 }}
-              transition={{ duration: 2, delay: 0.8 }}
-            />
-          </svg>
-
-          {store.connectedEmails.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="py-20 text-center hud-flicker"
-            >
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center border border-[#00ff88]/20">
-                <motion.div
-                  className="h-3 w-3 rounded-full bg-[#00ff88]/40"
-                  animate={{ scale: [1, 1.5, 1], opacity: [0.4, 1, 0.4] }}
-                  transition={{ duration: 2, repeat: Infinity }}
-                />
-              </div>
-              <h3 className="text-[15px] font-medium hud-neon tracking-[0.15em] uppercase">No Targets Linked</h3>
-              <p className="mx-auto mt-3 max-w-sm text-[12px] leading-relaxed text-[#00ff88]/30 tracking-wider">
-                Connect email addresses to initiate dark web reconnaissance scan.
-              </p>
-              <button
-                className="mt-5 px-6 py-2.5 text-[12px] font-medium uppercase tracking-[0.2em] border border-[#00ff88]/30 text-[#00ff88]/70 hover:bg-[#00ff88]/10 hover:text-[#00ff88] transition-all"
-                onClick={() => navigate('/scan')}
-              >
-                Initialize Scan
-              </button>
-            </motion.div>
-          ) : (
-            <>
-              {/* HUD Header — Telemetry Bar */}
+              {/* ── Top bar ── */}
               <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2, duration: 0.6 }}
-                className="hud-flicker mb-6"
-                style={{ animationDelay: '0.1s' }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="hud-flicker flex items-center justify-between mb-8"
+                style={{ animationDelay: '0.3s' }}
               >
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.25em] text-[#00ff88]/30 mb-3">
-                  <span>Dark Web Intelligence</span>
-                  <span className="hud-blink">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#00ff88]/60 mr-1.5" />
-                    System Active
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="rgba(0,255,136,0.5)" strokeWidth="1.5">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                    </svg>
+                    <span className="hud-text-resolve text-[11px] font-medium tracking-[0.2em] text-[#00ff88]/50" style={{ animationDelay: '0.4s' }}>
+                      VANISH DARK WEB SCANNER
+                    </span>
+                  </div>
+                  <span className="h-3 w-px bg-[#00ff88]/10" />
+                  <span className="text-[10px] tracking-[0.15em] text-[#00ff88]/20">
+                    {store.darkWebLastChecked ? `Last scan ${new Date(store.darkWebLastChecked).toLocaleDateString()}` : 'No previous scan'}
                   </span>
                 </div>
+                <div className="flex items-center gap-5">
+                  <span className="hud-blink flex items-center gap-2 text-[10px] tracking-[0.15em] text-[#00ff88]/30">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#00ff88]/50" style={{ boxShadow: '0 0 6px rgba(0,255,136,0.4)' }} />
+                    Connected
+                  </span>
+                  <motion.button
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                    onClick={() => setHudActive(false)}
+                    className="group flex items-center gap-2 px-4 py-2 text-[10px] font-medium tracking-[0.15em] border border-white/[0.06] text-white/25 hover:bg-white/[0.04] hover:text-white/50 hover:border-white/[0.12] transition-all"
+                  >
+                    <svg className="h-3 w-3 text-white/20 group-hover:text-white/40 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                    CLOSE
+                  </motion.button>
+                </div>
+              </motion.div>
 
-                <div className="hud-panel hud-panel-bottom">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-[2rem] font-bold tabular-nums hud-neon-red">
-                          {store.darkWebAlerts.filter((a) => !a.resolved).length}
-                        </span>
-                        <div>
-                          <span className="text-[11px] uppercase tracking-[0.15em] text-[#00ff88]/40">Threat Signals</span>
-                          {store.darkWebLastChecked && (
-                            <div className="text-[10px] text-[#00ff88]/20 mt-0.5">
-                              Last sweep: {new Date(store.darkWebLastChecked).toLocaleDateString()}
-                            </div>
-                          )}
-                        </div>
+              {/* ── Main panel ── */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5, duration: 0.4, ease: [0, 0, 0.2, 1] }}
+              >
+                <div className="hud-panel hud-panel-bottom hud-idle" style={{ animationDelay: '1.2s' }}>
+                  {/* Header row */}
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="space-y-3">
+                      <div className="flex items-end gap-4">
+                        <motion.span
+                          className="text-[2.8rem] font-bold tabular-nums leading-none"
+                          style={{
+                            color: store.darkWebAlerts.filter((a) => !a.resolved).length > 0 ? '#ff3366' : '#00ff88',
+                            textShadow: store.darkWebAlerts.filter((a) => !a.resolved).length > 0
+                              ? '0 0 20px rgba(255,51,102,0.3)'
+                              : '0 0 20px rgba(0,255,136,0.3)',
+                          }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.8 }}
+                        >
+                          <CountUp target={store.darkWebAlerts.filter((a) => !a.resolved).length} delay={800} />
+                        </motion.span>
+                        <motion.span
+                          className="hud-text-resolve text-[13px] font-medium tracking-[0.1em] text-white/40 pb-1"
+                          style={{ animationDelay: '0.9s' }}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: 0.9 }}
+                        >
+                          {store.darkWebAlerts.filter((a) => !a.resolved).length === 1 ? 'exposure found' : 'exposures found'}
+                        </motion.span>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-3 text-[10px] text-[#00ff88]/20 tracking-wider">
+
+                      {/* Email targets */}
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1.1 }}
+                        className="flex flex-wrap gap-3"
+                      >
                         {store.connectedEmails.map((e) => (
-                          <span key={e.email} className="flex items-center gap-1">
-                            <span className="h-1 w-1 rounded-full bg-[#00ff88]/30" />
+                          <span key={e.email} className="flex items-center gap-1.5 text-[11px] text-white/25 tracking-wide">
+                            <span className="h-1 w-1 rounded-full bg-[#00ff88]/40" style={{ boxShadow: '0 0 4px rgba(0,255,136,0.3)' }} />
                             {e.email}
                           </span>
                         ))}
-                      </div>
+                      </motion.div>
                     </div>
-                    <button
-                      className="px-4 py-2 text-[11px] font-medium uppercase tracking-[0.2em] border transition-all disabled:opacity-30"
+
+                    {/* Scan button */}
+                    <motion.button
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 1 }}
+                      className="hud-btn shrink-0 px-6 py-3 text-[11px] font-medium tracking-[0.15em] border transition-all disabled:opacity-30"
                       style={{
-                        borderColor: store.darkWebScanning ? 'rgba(255,170,0,0.3)' : 'rgba(0,255,136,0.25)',
-                        color: store.darkWebScanning ? '#ffaa00' : 'rgba(0,255,136,0.7)',
-                        background: store.darkWebScanning ? 'rgba(255,170,0,0.05)' : 'rgba(0,255,136,0.05)',
+                        borderColor: store.darkWebScanning ? 'rgba(255,170,0,0.25)' : 'rgba(0,255,136,0.2)',
+                        color: store.darkWebScanning ? '#ffaa00' : '#00ff88',
+                        background: store.darkWebScanning ? 'rgba(255,170,0,0.04)' : 'rgba(0,255,136,0.03)',
+                        textShadow: store.darkWebScanning ? '0 0 10px rgba(255,170,0,0.3)' : '0 0 10px rgba(0,255,136,0.2)',
                       }}
                       onClick={handleDarkWebScan}
                       disabled={store.darkWebScanning}
                     >
-                      {store.darkWebScanning ? 'Scanning...' : 'Run Sweep'}
-                    </button>
+                      {store.darkWebScanning ? 'SCANNING...' : 'RUN SCAN'}
+                    </motion.button>
                   </div>
 
-                  {/* Telemetry stats row */}
-                  <div className="mt-4 grid grid-cols-4 gap-3">
+                  {/* Divider with trace light */}
+                  <div className="relative my-5">
+                    <div className="h-px bg-[#00ff88]/[0.06]" />
+                    <div className="hud-trace-light" style={{ top: '-0.5px' }} />
+                  </div>
+
+                  {/* Stats grid */}
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 1.2 }}
+                    className="grid grid-cols-4 gap-4"
+                  >
                     {[
                       { label: 'Critical', value: store.darkWebAlerts.filter((a) => a.severity === 'critical' && !a.resolved).length, color: '#ff3366' },
                       { label: 'High', value: store.darkWebAlerts.filter((a) => a.severity === 'high' && !a.resolved).length, color: '#ffaa00' },
                       { label: 'Medium', value: store.darkWebAlerts.filter((a) => a.severity === 'medium' && !a.resolved).length, color: '#00ddff' },
                       { label: 'Resolved', value: store.darkWebAlerts.filter((a) => a.resolved).length, color: '#00ff88' },
-                    ].map((stat) => (
-                      <div key={stat.label} className="text-center border border-white/[0.04] py-2 bg-white/[0.01]">
-                        <div className="text-[1.1rem] font-bold tabular-nums" style={{ color: stat.color, textShadow: `0 0 8px ${stat.color}33` }}>
-                          {stat.value}
+                    ].map((stat, si) => (
+                      <motion.div
+                        key={stat.label}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 1.3 + si * 0.08 }}
+                        className="hud-flicker relative text-center py-3 border border-white/[0.03] bg-white/[0.008]"
+                        style={{ animationDelay: `${1.2 + si * 0.1}s` }}
+                      >
+                        {/* Top accent line */}
+                        <div className="absolute top-0 left-1/4 right-1/4 h-px" style={{ background: `linear-gradient(90deg, transparent, ${stat.color}30, transparent)` }} />
+                        <div className="text-[1.4rem] font-bold tabular-nums leading-none" style={{ color: stat.color, textShadow: `0 0 12px ${stat.color}25` }}>
+                          <CountUp target={stat.value} delay={1300 + si * 80} />
                         </div>
-                        <div className="text-[9px] uppercase tracking-[0.15em] mt-0.5" style={{ color: `${stat.color}66` }}>
-                          {stat.label}
+                        <div className="text-[9px] tracking-[0.15em] mt-1.5 font-medium" style={{ color: `${stat.color}55` }}>
+                          {stat.label.toUpperCase()}
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
-                  </div>
+                  </motion.div>
                 </div>
               </motion.div>
 
-              {/* Scanning progress — HUD style */}
-              {store.darkWebScanning && darkWebProgress && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  className="mb-5"
-                >
-                  <div className="hud-panel hud-panel-bottom text-center relative overflow-hidden hud-hscan">
-                    <div className="mx-auto mb-3 h-px w-48 overflow-hidden bg-[#00ff88]/10 relative">
-                      <motion.div
-                        className="h-full bg-[#00ff88]/60"
-                        animate={{ x: ['-100%', '100%'] }}
-                        transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
-                        style={{ width: '40%' }}
-                      />
+              {/* ── Scanning progress ── */}
+              <AnimatePresence>
+                {store.darkWebScanning && darkWebProgress && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.3, ease: [0, 0, 0.2, 1] }}
+                    className="mt-4"
+                  >
+                    <div className="hud-panel hud-panel-bottom relative overflow-hidden hud-hscan">
+                      <div className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <div className="h-px w-full bg-[#00ff88]/[0.06] overflow-hidden relative">
+                            <motion.div
+                              className="h-full bg-[#00ff88]/50"
+                              animate={{ x: ['-100%', '200%'] }}
+                              transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                              style={{ width: '30%', boxShadow: '0 0 12px rgba(0,255,136,0.4)' }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-[11px] text-[#00ff88]/35 tracking-wider font-medium shrink-0">{darkWebProgress}</span>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-[#00ff88]/40 tracking-wider uppercase">{darkWebProgress}</p>
-                  </div>
-                </motion.div>
-              )}
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-              {/* Filter chips — HUD style */}
+              {/* ── Filter chips ── */}
               {store.darkWebAlerts.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.5 }}
-                  className="mb-5 flex flex-wrap gap-1.5"
+                  transition={{ delay: 1.5 }}
+                  className="mt-6 mb-4 flex flex-wrap gap-2"
                 >
                   {[
-                    { key: null, label: 'ALL', count: store.darkWebAlerts.length },
-                    { key: 'unresolved', label: 'ACTIVE', count: store.darkWebAlerts.filter((a) => !a.resolved).length },
-                    { key: 'credentials', label: 'CREDS', count: store.darkWebAlerts.filter((a) => a.type === 'credentials').length },
-                    { key: 'personal_info', label: 'PII', count: store.darkWebAlerts.filter((a) => a.type === 'personal_info').length },
-                    { key: 'financial', label: 'FIN', count: store.darkWebAlerts.filter((a) => a.type === 'financial').length },
-                  ].filter((f) => f.count > 0).map((f) => (
-                    <button
+                    { key: null, label: 'All', count: store.darkWebAlerts.length },
+                    { key: 'unresolved', label: 'Active', count: store.darkWebAlerts.filter((a) => !a.resolved).length },
+                    { key: 'credentials', label: 'Credentials', count: store.darkWebAlerts.filter((a) => a.type === 'credentials').length },
+                    { key: 'personal_info', label: 'Personal Info', count: store.darkWebAlerts.filter((a) => a.type === 'personal_info').length },
+                    { key: 'financial', label: 'Financial', count: store.darkWebAlerts.filter((a) => a.type === 'financial').length },
+                  ].filter((f) => f.count > 0).map((f, fi) => (
+                    <motion.button
                       key={f.key ?? 'all'}
-                      onClick={() => setFilter(filter === f.key ? null : f.key)}
-                      className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.15em] transition-all"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 1.6 + fi * 0.04 }}
+                      onClick={() => setHudFilter(hudFilter === f.key ? null : f.key)}
+                      className="px-3 py-1.5 text-[10px] font-medium tracking-[0.1em] transition-all duration-200"
                       style={{
-                        border: `1px solid ${filter === f.key ? 'rgba(0,255,136,0.4)' : 'rgba(0,255,136,0.1)'}`,
-                        color: filter === f.key ? '#00ff88' : 'rgba(0,255,136,0.3)',
-                        background: filter === f.key ? 'rgba(0,255,136,0.08)' : 'transparent',
-                        textShadow: filter === f.key ? '0 0 6px rgba(0,255,136,0.3)' : 'none',
+                        border: `1px solid ${hudFilter === f.key ? 'rgba(0,255,136,0.35)' : 'rgba(255,255,255,0.04)'}`,
+                        color: hudFilter === f.key ? '#00ff88' : 'rgba(255,255,255,0.25)',
+                        background: hudFilter === f.key ? 'rgba(0,255,136,0.06)' : 'rgba(255,255,255,0.01)',
+                        textShadow: hudFilter === f.key ? '0 0 8px rgba(0,255,136,0.2)' : 'none',
                       }}
-                    >{f.label} [{f.count}]</button>
+                    >{f.label} ({f.count})</motion.button>
                   ))}
                 </motion.div>
               )}
 
-              {/* Empty state */}
+              {/* ── Empty state ── */}
               {store.darkWebAlerts.length === 0 && !store.darkWebScanning && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.6 }}
-                  className="py-16 text-center"
+                  transition={{ delay: 1.6 }}
+                  className="py-24 text-center"
                 >
-                  <div className="text-[12px] uppercase tracking-[0.2em] text-[#00ff88]/20">
-                    {store.darkWebLastChecked
-                      ? '// NO EXPOSURES DETECTED — PERIMETER SECURE'
-                      : '// AWAITING SCAN INITIATION'}
+                  <div className="space-y-4">
+                    <svg className="mx-auto h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="rgba(0,255,136,0.15)" strokeWidth="1">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <path d="M9 12l2 2 4-4" strokeWidth="1.5" stroke="rgba(0,255,136,0.25)" />
+                    </svg>
+                    <div className="text-[13px] tracking-[0.1em] text-white/20 font-medium">
+                      {store.darkWebLastChecked
+                        ? 'No exposures detected'
+                        : 'Run a scan to check for dark web exposures'}
+                    </div>
+                    <div className="text-[11px] text-white/10 tracking-wide">
+                      {store.darkWebLastChecked
+                        ? 'Your accounts appear clean across monitored databases'
+                        : 'We\'ll check breach databases for your email addresses'}
+                    </div>
                   </div>
                 </motion.div>
               )}
 
-              {/* Alert list — HUD panels */}
+              {/* ── Alert list ── */}
               <div className="space-y-3">
                 {store.darkWebAlerts
                   .filter((alert) => {
-                    if (filter === 'unresolved') return !alert.resolved;
-                    if (filter === 'credentials' || filter === 'personal_info' || filter === 'financial' || filter === 'medical') return alert.type === filter;
+                    if (hudFilter === 'unresolved') return !alert.resolved;
+                    if (hudFilter === 'credentials' || hudFilter === 'personal_info' || hudFilter === 'financial' || hudFilter === 'medical') return alert.type === hudFilter;
                     return true;
-                  })
-                  .filter((alert) => {
-                    if (!search.trim()) return true;
-                    const q = search.toLowerCase();
-                    return alert.source.toLowerCase().includes(q) || alert.email.toLowerCase().includes(q) || alert.description.toLowerCase().includes(q);
                   })
                   .map((alert, i) => {
                     const hudSev: Record<string, { color: string; label: string }> = {
-                      critical: { color: '#ff3366', label: 'CRIT' },
+                      critical: { color: '#ff3366', label: 'CRITICAL' },
                       high: { color: '#ffaa00', label: 'HIGH' },
-                      medium: { color: '#00ddff', label: 'MED' },
+                      medium: { color: '#00ddff', label: 'MEDIUM' },
                       low: { color: '#00ff88', label: 'LOW' },
                     };
                     const sv = hudSev[alert.severity] || hudSev.low;
                     const typeLabels: Record<string, string> = {
-                      credentials: 'CRED',
-                      personal_info: 'PII',
-                      financial: 'FIN',
-                      medical: 'MED',
+                      credentials: 'Credentials', personal_info: 'Personal Info', financial: 'Financial', medical: 'Medical',
                     };
                     return (
                       <motion.div
                         key={alert.id}
                         initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.4 + i * 0.06, duration: 0.5 }}
-                        className={`hud-panel hud-panel-bottom hud-flicker transition-opacity ${alert.resolved ? 'opacity-30' : ''}`}
-                        style={{ animationDelay: `${0.3 + i * 0.08}s` }}
+                        animate={{ opacity: alert.resolved ? 0.35 : 1, x: 0 }}
+                        transition={{ delay: 1.7 + i * 0.06, duration: 0.3, ease: [0, 0, 0.2, 1] }}
+                        className="hud-panel hud-panel-bottom hud-idle group"
+                        style={{ animationDelay: `${2 + i * 0.1}s` }}
                       >
                         <div className="flex items-start justify-between gap-4">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2.5">
+                              {/* Severity dot */}
                               <span
-                                className="inline-block h-2 w-2"
-                                style={{ backgroundColor: sv.color, boxShadow: `0 0 6px ${sv.color}66` }}
+                                className="inline-block h-2 w-2 rounded-full shrink-0"
+                                style={{
+                                  backgroundColor: sv.color,
+                                  boxShadow: `0 0 8px ${sv.color}40`,
+                                  animation: alert.resolved ? 'none' : `hud-sev-pulse 2s ease-in-out infinite ${i * 0.3}s`,
+                                  color: sv.color,
+                                }}
                               />
-                              <h3 className="text-[13px] font-semibold text-white/90 tracking-wide uppercase">{alert.source}</h3>
+                              {/* Source name */}
+                              <h3 className="text-[13px] font-semibold text-white/80 tracking-wide">{alert.source}</h3>
+                              {/* Severity badge */}
                               <span
-                                className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.15em] border"
-                                style={{ color: sv.color, borderColor: `${sv.color}33`, background: `${sv.color}0d` }}
+                                className="px-2 py-0.5 text-[9px] font-bold tracking-[0.1em] border rounded-sm"
+                                style={{ color: sv.color, borderColor: `${sv.color}25`, background: `${sv.color}08` }}
                               >
                                 {sv.label}
                               </span>
-                              <span className="px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] border border-[#00ddff]/20 text-[#00ddff]/50 bg-[#00ddff]/5">
+                              {/* Type badge */}
+                              <span className="px-2 py-0.5 text-[9px] font-medium tracking-[0.05em] border border-white/[0.06] text-white/25 bg-white/[0.015] rounded-sm">
                                 {typeLabels[alert.type] || alert.type}
                               </span>
+                              {/* Resolved badge */}
                               {alert.resolved && (
-                                <span className="px-2 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] border border-[#00ff88]/20 text-[#00ff88]/50 bg-[#00ff88]/5">
-                                  Neutralized
+                                <span className="px-2 py-0.5 text-[9px] font-medium tracking-[0.05em] border border-[#00ff88]/15 text-[#00ff88]/35 bg-[#00ff88]/[0.03] rounded-sm">
+                                  Resolved
                                 </span>
                               )}
                             </div>
-                            <p className="mt-1.5 text-[10px] text-[#00ff88]/20 tracking-wider">
-                              {alert.email} // {formatDate(alert.date)}
-                            </p>
+                            <div className="mt-1.5 flex items-center gap-2 text-[10px] text-white/15">
+                              <span>{alert.email}</span>
+                              <span className="text-white/[0.06]">|</span>
+                              <span>{formatDate(alert.date)}</span>
+                            </div>
+                            <p className="mt-2.5 text-[12px] leading-[1.6] text-white/25">{alert.description}</p>
                           </div>
                           {!alert.resolved && (
                             <button
-                              className="shrink-0 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.15em] border border-[#00ff88]/20 text-[#00ff88]/50 hover:bg-[#00ff88]/10 hover:text-[#00ff88] hover:border-[#00ff88]/40 transition-all"
+                              className="hud-btn shrink-0 px-4 py-2 text-[10px] font-medium tracking-[0.1em] border border-white/[0.06] text-white/30 hover:bg-[#00ff88]/[0.06] hover:text-[#00ff88]/70 hover:border-[#00ff88]/20 transition-all"
                               onClick={() => store.markDarkWebAlertResolved(alert.id)}
                             >
-                              Neutralize
+                              Resolve
                             </button>
                           )}
                         </div>
-                        <p className="mt-3 text-[12px] leading-relaxed text-white/25 tracking-wide">{alert.description}</p>
                       </motion.div>
                     );
                   })}
               </div>
-            </>
-          )}
 
-          {/* Bottom telemetry bar */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.2 }}
-            className="mt-8 flex items-center justify-between text-[9px] uppercase tracking-[0.25em] text-[#00ff88]/15"
-          >
-            <span>Vanish Dark Web Intelligence Module v2.1</span>
-            <span className="flex items-center gap-2">
-              <span className="hud-blink inline-block h-1 w-1 rounded-full bg-[#00ff88]/30" />
-              Encrypted Channel
-            </span>
+              {/* ── Bottom status ── */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 2 }}
+                className="mt-10 mb-4 flex items-center justify-between text-[9px] tracking-[0.15em] text-white/[0.08]"
+              >
+                <span>Vanish Scanner v2.1</span>
+                <span className="flex items-center gap-2">
+                  <span className="hud-blink inline-block h-1 w-1 rounded-full bg-[#00ff88]/20" style={{ boxShadow: '0 0 3px rgba(0,255,136,0.2)' }} />
+                  Secure connection
+                </span>
+              </motion.div>
+            </div>
           </motion.div>
-
-          </div>
-        </motion.div>
-      )}
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
