@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vanish — Digital Footprint Scanner",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Discover every account and subscription linked to your email. Part of the Vanish privacy suite.",
 
   "permissions": [

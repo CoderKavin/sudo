@@ -212,16 +212,15 @@ const FAILED_PATTERNS = [
   /past.?due/i, /overdue/i,
 ];
 
-// Renewal / successful charge signals — stricter to avoid order receipts
+// Renewal / successful charge signals — strict to avoid order receipts
 const CHARGE_PATTERNS = [
-  /payment.?(confirm|success|receiv|process)/i,
-  /billing.?(statement|confirm|summary)/i, /renewal/i, /renewed/i,
+  /billing.?(statement|summary)/i, /renewal/i, /renewed/i,
   /your.?(subscription|membership).?(renew|receipt|invoice|payment)/i,
-  /thank.?you.?for.?(your )?payment/i,
   /recurring.?(payment|charge|billing)/i,
   /subscription.?(receipt|invoice|payment|confirm|renew)/i,
   /monthly.?(charge|payment|bill)/i,
   /annual.?(charge|payment|bill|renewal)/i,
+  /membership.?(payment|charge|renewal|bill)/i,
 ];
 
 // One-time purchase signals — these are NOT subscriptions
@@ -233,6 +232,13 @@ const ONE_TIME_PATTERNS = [
   /tracking/i, /shipped/i, /delivered/i,
   /purchase.?(confirm|receipt)/i,
   /item.?(ship|deliver)/i,
+  /thank.?you.?for.?(your )?(order|purchase)/i,
+  /payment.?(confirm|success|receiv|process)(?!.*subscri)(?!.*recurr)(?!.*member)/i,
+  /receipt for your (order|purchase)/i,
+  /booking.?(confirm|receipt)/i,
+  /reservation.?(confirm|receipt)/i,
+  /ticket.?(confirm|receipt|purchase)/i,
+  /registration.?(confirm|receipt|fee)/i,
 ];
 
 /**
@@ -438,13 +444,22 @@ export async function scanForSubscriptions(token, onProgress) {
     // Need at least 2 actual charge events (not just any billing keyword email)
     if (charges.length < 2) continue;
 
-    // For unknown services (not in our database), require stronger evidence:
-    // - At least 3 charge events
-    // - At least one charge must have a dollar amount
+    // For unknown services (not in our database), require much stronger evidence:
+    // - At least 4 charge events (vs 2 for known services)
+    // - At least 2 charges must have a dollar amount
+    // - The most common amount must appear at least twice (consistent pricing = real subscription)
     if (service._unknown) {
-      if (charges.length < 3) continue;
-      const hasAmount = charges.some((e) => e.amount > 0);
-      if (!hasAmount) continue;
+      if (charges.length < 4) continue;
+      const chargesWithAmount = charges.filter((e) => e.amount > 0);
+      if (chargesWithAmount.length < 2) continue;
+      // Check amount consistency — same amount must appear 2+ times
+      const amountCounts = {};
+      for (const e of chargesWithAmount) {
+        const key = e.amount.toFixed(2);
+        amountCounts[key] = (amountCounts[key] || 0) + 1;
+      }
+      const maxCount = Math.max(...Object.values(amountCounts));
+      if (maxCount < 2) continue; // All different amounts = likely not a subscription
     }
 
     // Determine amount (most consistent charge amount)

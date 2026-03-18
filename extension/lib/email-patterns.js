@@ -116,19 +116,47 @@ const DOMAIN_MAP = {
 
 // Domains that send transactional/marketing emails but are NOT subscriptions
 const NON_SUBSCRIPTION_DOMAINS = [
-  'tesla.com', 'apple.com', 'amazon.com', 'walmart.com', 'target.com',
+  // Automotive & manufacturers
+  'tesla.com', 'ford.com', 'bmw.com', 'mercedes-benz.com', 'toyota.com',
+  // Retail / e-commerce (one-time purchases, not subscriptions)
+  'apple.com', 'amazon.com', 'walmart.com', 'target.com',
   'bestbuy.com', 'nike.com', 'adidas.com', 'costco.com',
+  'homedepot.com', 'lowes.com', 'macys.com', 'nordstrom.com',
+  'zara.com', 'hm.com', 'gap.com', 'oldnavy.com', 'uniqlo.com',
+  // Shipping & logistics
   'fedex.com', 'ups.com', 'usps.com', 'dhl.com',
+  // Banking & finance (statements, not subscriptions)
   'bankofamerica.com', 'chase.com', 'wellsfargo.com', 'citi.com', 'capitalone.com',
-  'americanexpress.com', 'discover.com',
-  'irs.gov', 'dmv.gov',
+  'americanexpress.com', 'discover.com', 'usbank.com', 'pnc.com', 'tdbank.com',
+  'schwab.com', 'fidelity.com', 'vanguard.com', 'robinhood.com',
+  // Government
+  'irs.gov', 'dmv.gov', 'ssa.gov',
+  // Food delivery & ride-sharing (per-use, not subscriptions)
   'doordash.com', 'ubereats.com', 'grubhub.com', 'instacart.com',
   'uber.com', 'lyft.com',
-  'airbnb.com', 'booking.com', 'expedia.com',
+  // Travel (bookings, not subscriptions)
+  'airbnb.com', 'booking.com', 'expedia.com', 'hotels.com',
+  'southwest.com', 'united.com', 'delta.com', 'aa.com',
+  // Marketplaces (one-time purchases)
   'ebay.com', 'etsy.com', 'aliexpress.com', 'shopify.com',
-  'starbucks.com', 'mcdonalds.com',
+  'poshmark.com', 'mercari.com', 'offerup.com',
+  // Food & restaurants
+  'starbucks.com', 'mcdonalds.com', 'chipotle.com',
+  // Jobs & real estate
   'indeed.com', 'glassdoor.com', 'monster.com',
   'zillow.com', 'redfin.com', 'trulia.com',
+  // Casting / audition / talent (per-use fees, not subscriptions)
+  'backstage.com', 'castingnetworks.com', 'actorsaccess.com',
+  // Ticketing & events
+  'ticketmaster.com', 'eventbrite.com', 'stubhub.com', 'seatgeek.com',
+  // Education (tuition/fees, not subscriptions)
+  'collegeboard.org', 'commonapp.org',
+  // Insurance
+  'geico.com', 'progressive.com', 'statefarm.com', 'allstate.com',
+  // Utilities & telecom (bills, but not tracked as "subscriptions" in the typical sense)
+  'att.com', 'verizon.com', 'tmobile.com', 'xfinity.com', 'spectrum.com',
+  // Newsletters & free content
+  'substack.com', 'beehiiv.com',
 ];
 
 /**
