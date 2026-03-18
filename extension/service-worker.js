@@ -116,6 +116,20 @@ async function handleDisconnect() {
 }
 
 async function handleScan() {
+  // Keep service worker alive during long scans (MV3 kills after ~30s of no Chrome API calls)
+  const keepAlive = setInterval(() => {
+    chrome.storage.local.set({ vanish_keepalive: Date.now() });
+  }, 20000);
+
+  try {
+    return await _runScan();
+  } finally {
+    clearInterval(keepAlive);
+    chrome.storage.local.remove('vanish_keepalive');
+  }
+}
+
+async function _runScan() {
   await chrome.storage.local.set({
     vanish_scan_status: 'scanning',
     vanish_scan_progress: 'Starting scan...',

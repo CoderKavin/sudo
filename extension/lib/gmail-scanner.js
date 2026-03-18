@@ -68,7 +68,10 @@ async function searchMessages(token, query, maxResults = 200) {
         `https://www.googleapis.com/gmail/v1/users/me/messages?${params}`,
         { headers: { Authorization: `Bearer ${currentToken}` } }
       );
-      if (!retry.ok) break;
+      if (!retry.ok) {
+        const errBody = await retry.text().catch(() => '');
+        throw new Error(`Gmail API error ${retry.status} after token refresh: ${errBody}`);
+      }
       const retryData = await retry.json();
       if (!retryData.messages) break;
       ids.push(...retryData.messages.map((m) => m.id));
@@ -77,7 +80,10 @@ async function searchMessages(token, query, maxResults = 200) {
       continue;
     }
 
-    if (!res.ok) break;
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => '');
+      throw new Error(`Gmail API error ${res.status}: ${errBody}`);
+    }
 
     const data = await res.json();
     if (!data.messages) break;
@@ -107,13 +113,79 @@ async function getMessageHeaders(token, messageId) {
   }
   // Include snippet for amount extraction (Gmail returns ~160 chars preview)
   headers._snippet = data.snippet || '';
+  headers._id = messageId;
   return headers;
 }
 
 /**
- * Batch fetch message headers with concurrency control
+ * Decode a base64url-encoded Gmail message body part
  */
-async function batchGetHeaders(token, messageIds, concurrency = 10) {
+function decodeBody(encoded) {
+  try {
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    return atob(base64);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Recursively extract text from a Gmail message payload
+ */
+function extractTextFromPayload(payload) {
+  if (!payload) return '';
+
+  // Single-part message
+  if (payload.body?.data && payload.mimeType?.startsWith('text/')) {
+    return decodeBody(payload.body.data);
+  }
+
+  // Multipart — recurse into parts, prefer text/plain
+  if (payload.parts) {
+    let plain = '';
+    let html = '';
+    for (const part of payload.parts) {
+      if (part.mimeType === 'text/plain' && part.body?.data) {
+        plain += decodeBody(part.body.data);
+      } else if (part.mimeType === 'text/html' && part.body?.data) {
+        html += decodeBody(part.body.data);
+      } else if (part.parts) {
+        const nested = extractTextFromPayload(part);
+        if (nested) plain += nested;
+      }
+    }
+    // Strip HTML tags if we only got HTML
+    if (!plain && html) {
+      plain = html.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+    }
+    return plain;
+  }
+
+  return '';
+}
+
+/**
+ * Fetch full message body and extract dollar amount
+ */
+async function getAmountFromBody(token, messageId) {
+  const res = await fetch(
+    `https://www.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const text = extractTextFromPayload(data.payload);
+  if (!text) return null;
+
+  return parseAmount(text);
+}
+
+/**
+ * Batch fetch message headers with concurrency control
+ * onProgress keeps the MV3 service worker alive via chrome.storage writes
+ */
+async function batchGetHeaders(token, messageIds, concurrency = 10, onProgress) {
   const results = [];
 
   for (let i = 0; i < messageIds.length; i += concurrency) {
@@ -122,6 +194,11 @@ async function batchGetHeaders(token, messageIds, concurrency = 10) {
       batch.map((id) => getMessageHeaders(token, id))
     );
     results.push(...batchResults.filter(Boolean));
+
+    // Keep service worker alive with periodic progress updates
+    if (onProgress && (i % 50 === 0 || i + concurrency >= messageIds.length)) {
+      onProgress(`Processing ${Math.min(i + concurrency, messageIds.length)} of ${messageIds.length} emails...`);
+    }
   }
 
   return results;
@@ -140,7 +217,7 @@ export async function scanForAccounts(token, onProgress) {
 
   onProgress?.(`Found ${messageIds.length} potential signup emails...`);
 
-  const headers = await batchGetHeaders(token, messageIds);
+  const headers = await batchGetHeaders(token, messageIds, 10, onProgress);
 
   // Deduplicate by sender domain
   const seen = new Map(); // service name -> account info
@@ -241,16 +318,22 @@ const ONE_TIME_PATTERNS = [
   /registration.?(confirm|receipt|fee)/i,
 ];
 
+// Broader charge patterns for KNOWN subscription services
+// (e.g. "Your receipt" from Netflix is obviously a charge)
+const KNOWN_SERVICE_CHARGE_PATTERNS = [
+  /receipt/i, /invoice/i,
+  /payment/i, /charged/i, /charge\b/i,
+  /billed/i, /billing/i,
+  /thank.?you.?for.?your.?(payment|subscription|membership)/i,
+  /your.?plan/i, /plan.?(update|change|renew)/i,
+];
+
 /**
  * Classify an email as a charge, cancellation, failure, or other
+ * isKnownService: true for services in DOMAIN_MAP (more lenient charge detection)
  */
-function classifyBillingEmail(subject, snippet) {
+function classifyBillingEmail(subject, snippet, isKnownService = false) {
   const text = `${subject} ${snippet}`;
-
-  // Check one-time purchases first — these are NOT subscription charges
-  for (const pat of ONE_TIME_PATTERNS) {
-    if (pat.test(subject)) return 'other'; // Only check subject, not snippet
-  }
 
   // Check cancellation first (more specific)
   for (const pat of CANCEL_PATTERNS) {
@@ -259,9 +342,27 @@ function classifyBillingEmail(subject, snippet) {
   for (const pat of FAILED_PATTERNS) {
     if (pat.test(text)) return 'failed';
   }
+
+  // Check one-time purchases — but skip this for known services
+  // (a "receipt" from Netflix IS a subscription charge, not a one-time purchase)
+  if (!isKnownService) {
+    for (const pat of ONE_TIME_PATTERNS) {
+      if (pat.test(subject)) return 'other';
+    }
+  }
+
+  // Strict charge patterns (work for all services)
   for (const pat of CHARGE_PATTERNS) {
     if (pat.test(text)) return 'charge';
   }
+
+  // For known services, also accept broader billing language
+  if (isKnownService) {
+    for (const pat of KNOWN_SERVICE_CHARGE_PATTERNS) {
+      if (pat.test(subject)) return 'charge';
+    }
+  }
+
   return 'other';
 }
 
@@ -367,12 +468,12 @@ export async function scanForSubscriptions(token, onProgress) {
 
   onProgress?.(`Found ${messageIds.length} billing emails, analyzing...`);
 
-  const headers = await batchGetHeaders(token, messageIds);
+  const headers = await batchGetHeaders(token, messageIds, 10, onProgress);
 
   // Also search for cancellation emails specifically
   const cancelQuery = 'subject:(cancelled OR canceled OR "subscription ended" OR unsubscribed OR "plan cancelled" OR refund) newer_than:2y';
   const cancelIds = await searchMessages(token, cancelQuery, 100);
-  const cancelHeaders = await batchGetHeaders(token, cancelIds);
+  const cancelHeaders = await batchGetHeaders(token, cancelIds, 10, onProgress);
 
   onProgress?.('Classifying billing events...');
 
@@ -405,7 +506,7 @@ export async function scanForSubscriptions(token, onProgress) {
       });
     }
 
-    const type = classifyBillingEmail(subject, snippet);
+    const type = classifyBillingEmail(subject, snippet, !service._unknown);
     const amountInfo = extractAmount(subject, snippet);
     const timestamp = new Date(date).getTime();
 
@@ -417,6 +518,7 @@ export async function scanForSubscriptions(token, onProgress) {
         currency: amountInfo?.currency || 'USD',
         subject,
         source, // 'billing' or 'cancel'
+        messageId: h._id,
       });
     }
   }
@@ -537,6 +639,35 @@ export async function scanForSubscriptions(token, onProgress) {
       lastFailureDate: lastFailure > 0 ? new Date(lastFailure).toISOString() : null,
       lastCancelDate: lastCancellation > 0 ? new Date(lastCancellation).toISOString() : null,
     });
+  }
+
+  // For subscriptions with $0 amount, try fetching email bodies for actual prices
+  const zeroAmountSubs = subscriptions.filter((s) => s.amount === 0);
+  if (zeroAmountSubs.length > 0) {
+    onProgress?.(`Extracting prices for ${zeroAmountSubs.length} subscriptions...`);
+
+    for (const sub of zeroAmountSubs) {
+      const service = serviceMap.get(sub.name);
+      if (!service) continue;
+
+      // Get the most recent charge emails with message IDs
+      const recentCharges = service.events
+        .filter((e) => e.type === 'charge' && e.messageId)
+        .sort((a, b) => b.date - a.date)
+        .slice(0, 3);
+
+      for (const charge of recentCharges) {
+        const bodyAmount = await getAmountFromBody(token, charge.messageId);
+        if (bodyAmount && bodyAmount.amount > 0) {
+          sub.amount = bodyAmount.amount;
+          sub.currency = bodyAmount.currency;
+          break;
+        }
+      }
+
+      // Keep service worker alive
+      onProgress?.(`Extracting prices for ${zeroAmountSubs.length} subscriptions...`);
+    }
   }
 
   onProgress?.(`Found ${subscriptions.length} subscriptions`);

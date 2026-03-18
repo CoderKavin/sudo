@@ -119,7 +119,9 @@ const NON_SUBSCRIPTION_DOMAINS = [
   // Automotive & manufacturers
   'tesla.com', 'ford.com', 'bmw.com', 'mercedes-benz.com', 'toyota.com',
   // Retail / e-commerce (one-time purchases, not subscriptions)
-  'apple.com', 'amazon.com', 'walmart.com', 'target.com',
+  // NOTE: apple.com and amazon.com are NOT blocked — they have real subscriptions
+  // (Apple Music, iCloud, Amazon Prime, etc.) and the charge patterns handle filtering
+  'walmart.com', 'target.com',
   'bestbuy.com', 'nike.com', 'adidas.com', 'costco.com',
   'homedepot.com', 'lowes.com', 'macys.com', 'nordstrom.com',
   'zara.com', 'hm.com', 'gap.com', 'oldnavy.com', 'uniqlo.com',
@@ -128,7 +130,7 @@ const NON_SUBSCRIPTION_DOMAINS = [
   // Banking & finance (statements, not subscriptions)
   'bankofamerica.com', 'chase.com', 'wellsfargo.com', 'citi.com', 'capitalone.com',
   'americanexpress.com', 'discover.com', 'usbank.com', 'pnc.com', 'tdbank.com',
-  'schwab.com', 'fidelity.com', 'vanguard.com', 'robinhood.com',
+  'schwab.com', 'fidelity.com', 'vanguard.com',
   // Government
   'irs.gov', 'dmv.gov', 'ssa.gov',
   // Food delivery & ride-sharing (per-use, not subscriptions)
