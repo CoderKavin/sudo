@@ -395,6 +395,7 @@ export async function scanForSubscriptions(token, onProgress) {
         name: service.name,
         domain,
         events: [],
+        _unknown: !!service._unknown,
       });
     }
 
@@ -436,6 +437,15 @@ export async function scanForSubscriptions(token, onProgress) {
 
     // Need at least 2 actual charge events (not just any billing keyword email)
     if (charges.length < 2) continue;
+
+    // For unknown services (not in our database), require stronger evidence:
+    // - At least 3 charge events
+    // - At least one charge must have a dollar amount
+    if (service._unknown) {
+      if (charges.length < 3) continue;
+      const hasAmount = charges.some((e) => e.amount > 0);
+      if (!hasAmount) continue;
+    }
 
     // Determine amount (most consistent charge amount)
     const { amount, currency } = detectAmount(charges);

@@ -133,7 +133,7 @@ const NON_SUBSCRIPTION_DOMAINS = [
 
 /**
  * Identify a service from sender domain, from header, and subject
- * mode: 'account' (permissive) or 'subscription' (strict — only known services)
+ * mode: 'account' (permissive) or 'subscription' (strict — blocks known non-subscription domains, marks unknowns)
  */
 export function identifyService(domain, from, subject, mode = 'account') {
   // Direct domain match
@@ -147,16 +147,18 @@ export function identifyService(domain, from, subject, mode = 'account') {
     }
   }
 
-  // For subscriptions, only match known services — don't guess from sender name
-  if (mode === 'subscription') return null;
-
-  // For account discovery, try to extract a readable name from the "From" field
+  // Try to extract a readable name from the "From" field
   const nameMatch = from.match(/^"?([^"<]+)"?\s*</);
   if (nameMatch) {
     const name = nameMatch[1].trim();
     // Skip generic senders
     if (name.length > 2 && name.length < 40 && !/^(no-?reply|info|support|help|team|hello|hi|contact|admin|mail)$/i.test(name)) {
-      return { name, category: 'other' };
+      // For subscriptions, block known non-subscription domains but allow unknowns through
+      // (they'll need stronger evidence later — more charges, must have amounts)
+      if (mode === 'subscription' && NON_SUBSCRIPTION_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) {
+        return null;
+      }
+      return { name, category: 'other', _unknown: mode === 'subscription' };
     }
   }
 
