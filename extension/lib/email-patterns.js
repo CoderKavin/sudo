@@ -114,24 +114,48 @@ const DOMAIN_MAP = {
   'grammarly.com': { name: 'Grammarly', category: 'work' },
 };
 
+// Domains that send transactional/marketing emails but are NOT subscriptions
+const NON_SUBSCRIPTION_DOMAINS = [
+  'tesla.com', 'apple.com', 'amazon.com', 'walmart.com', 'target.com',
+  'bestbuy.com', 'nike.com', 'adidas.com', 'costco.com',
+  'fedex.com', 'ups.com', 'usps.com', 'dhl.com',
+  'bankofamerica.com', 'chase.com', 'wellsfargo.com', 'citi.com', 'capitalone.com',
+  'americanexpress.com', 'discover.com',
+  'irs.gov', 'dmv.gov',
+  'doordash.com', 'ubereats.com', 'grubhub.com', 'instacart.com',
+  'uber.com', 'lyft.com',
+  'airbnb.com', 'booking.com', 'expedia.com',
+  'ebay.com', 'etsy.com', 'aliexpress.com', 'shopify.com',
+  'starbucks.com', 'mcdonalds.com',
+  'indeed.com', 'glassdoor.com', 'monster.com',
+  'zillow.com', 'redfin.com', 'trulia.com',
+];
+
 /**
  * Identify a service from sender domain, from header, and subject
+ * mode: 'account' (permissive) or 'subscription' (strict — only known services)
  */
-export function identifyService(domain, from, subject) {
+export function identifyService(domain, from, subject, mode = 'account') {
   // Direct domain match
   for (const [knownDomain, service] of Object.entries(DOMAIN_MAP)) {
     if (domain === knownDomain || domain.endsWith('.' + knownDomain)) {
+      // For subscription mode, skip domains known to send transactional emails
+      if (mode === 'subscription' && NON_SUBSCRIPTION_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) {
+        return null;
+      }
       return service;
     }
   }
 
-  // Try to extract a readable name from the "From" field
+  // For subscriptions, only match known services — don't guess from sender name
+  if (mode === 'subscription') return null;
+
+  // For account discovery, try to extract a readable name from the "From" field
   const nameMatch = from.match(/^"?([^"<]+)"?\s*</);
   if (nameMatch) {
     const name = nameMatch[1].trim();
     // Skip generic senders
     if (name.length > 2 && name.length < 40 && !/^(no-?reply|info|support|help|team|hello|hi|contact|admin|mail)$/i.test(name)) {
-      // Use the root domain as category hint
       return { name, category: 'other' };
     }
   }

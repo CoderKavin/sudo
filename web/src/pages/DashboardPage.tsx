@@ -1641,7 +1641,7 @@ export default function DashboardPage() {
                 );
               })()}
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {filteredSubscriptions.length === 0 && (
                   <div className="col-span-full py-16 text-center text-[15px] text-white/45">No subscriptions match your filters</div>
                 )}
@@ -1850,7 +1850,7 @@ export default function DashboardPage() {
             </svg>
 
             {/* ── Content ── */}
-            <div className="hud-glitch-in relative mx-auto max-w-7xl px-8 py-8 scale-[1.06] origin-top" style={{ zIndex: 10 }}>
+            <div className="hud-glitch-in relative mx-auto max-w-7xl px-8 py-8 scale-[1.12] origin-top" style={{ zIndex: 10 }}>
 
               {/* ── Top bar ── */}
               <motion.div

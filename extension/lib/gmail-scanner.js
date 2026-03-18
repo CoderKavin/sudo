@@ -212,14 +212,27 @@ const FAILED_PATTERNS = [
   /past.?due/i, /overdue/i,
 ];
 
-// Renewal / successful charge signals
+// Renewal / successful charge signals — stricter to avoid order receipts
 const CHARGE_PATTERNS = [
-  /receipt/i, /invoice/i, /payment.?(confirm|success|receiv|process)/i,
-  /charged?\b/i, /billing.?(statement|confirm|summary)/i, /renewal/i, /renewed/i,
+  /payment.?(confirm|success|receiv|process)/i,
+  /billing.?(statement|confirm|summary)/i, /renewal/i, /renewed/i,
   /your.?(subscription|membership).?(renew|receipt|invoice|payment)/i,
   /thank.?you.?for.?(your )?payment/i,
   /recurring.?(payment|charge|billing)/i,
   /subscription.?(receipt|invoice|payment|confirm|renew)/i,
+  /monthly.?(charge|payment|bill)/i,
+  /annual.?(charge|payment|bill|renewal)/i,
+];
+
+// One-time purchase signals — these are NOT subscriptions
+const ONE_TIME_PATTERNS = [
+  /order.?(confirm|receipt|ship|deliver|track)/i,
+  /shipping.?(confirm|update|notif)/i,
+  /delivery.?(confirm|update|notif|schedul)/i,
+  /your order/i, /order #/i, /order number/i,
+  /tracking/i, /shipped/i, /delivered/i,
+  /purchase.?(confirm|receipt)/i,
+  /item.?(ship|deliver)/i,
 ];
 
 /**
@@ -227,6 +240,11 @@ const CHARGE_PATTERNS = [
  */
 function classifyBillingEmail(subject, snippet) {
   const text = `${subject} ${snippet}`;
+
+  // Check one-time purchases first — these are NOT subscription charges
+  for (const pat of ONE_TIME_PATTERNS) {
+    if (pat.test(subject)) return 'other'; // Only check subject, not snippet
+  }
 
   // Check cancellation first (more specific)
   for (const pat of CANCEL_PATTERNS) {
@@ -368,7 +386,7 @@ export async function scanForSubscriptions(token, onProgress) {
     if (!domain) return;
     if (SUBSCRIPTION_PATTERNS.ignoreDomains.some((d) => domain.includes(d))) return;
 
-    const service = identifyService(domain, from, subject);
+    const service = identifyService(domain, from, subject, 'subscription');
     if (!service) return;
 
     const key = service.name;
